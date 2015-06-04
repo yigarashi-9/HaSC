@@ -16,6 +16,17 @@ v = IdentExpr u
 c :: Integer -> Expr
 c = Constant u
 
+exprSample :: Expr
+exprSample = BinaryPrim u "||" (v "a")
+             (BinaryPrim u "&&" (v "b")
+              (ArrayAccess u (v "c") (MultiExpr u [(v "d")])))
+
+stmtSample :: Stmt
+stmtSample = CompoundStmt u
+             [DeclStmt u [(CInt, Variable u "a"), (CInt, Sequence u "b" 20)],
+              DeclStmt u [(CPointer CInt, Variable u "c")],
+              ExprStmt u $ MultiExpr u $ [AssignExpr u (v "a") (v "c")]]
+
 spec :: Spec
 spec = do
   describe "Parser" $ do
@@ -24,10 +35,7 @@ spec = do
                 (Right $ AssignExpr u (v "a") (c 3))
       parse assignExpr "" "a || b + 3" `shouldBe`
                 (Right $ BinaryPrim u "||" (v "a") (BinaryPrim u "+" (v "b") (c 3)))
-      parse assignExpr "" "a || b && c[d]" `shouldBe`
-                (Right $ BinaryPrim u "||" (v "a")
-                           (BinaryPrim u "&&" (v "b")
-                              (ArrayAccess u (v "c") (MultiExpr u [(v "d")]))))
+      parse assignExpr "" "a || b && c[d]" `shouldBe` (Right exprSample)
       parse assignExpr "" "1 + &a * b" `shouldBe`
                 (Right $ BinaryPrim u "+" (c 1)
                            (BinaryPrim u "*" (UnaryPrim u "&" (v "a")) (v "b")))
@@ -51,8 +59,8 @@ spec = do
     it "Statement" $ do
       parse stmt "" ";" `shouldBe` (Right $ EmptyStmt u)
       parse stmt "" "a;" `shouldBe` (Right $ ExprStmt u $ MultiExpr u [(v "a")])
-      parse stmt "" "{int a, b[20]; int *c; a = c;}" `shouldBe`
-                (Right $ CompoundStmt u
-                         [DeclStmt u [(CInt, Variable u "a"), (CInt, Sequence u "b" 20)],
-                          DeclStmt u [(CPointer CInt, Variable u "c")],
-                          ExprStmt u $ MultiExpr u $ [AssignExpr u (v "a") (v "c")]])
+      parse stmt "" "{int a, b[20]; int *c; a = c;}" `shouldBe` (Right stmtSample)
+      parse stmt "" "if(a) ; else ;" `shouldBe`
+                (Right $ IfStmt u (MultiExpr u [(v "a")]) (EmptyStmt u) (EmptyStmt u))
+      parse stmt "" "if(a || b && c[d]) ;" `shouldBe`
+                (Right $ IfStmt u exprSample (EmptyStmt u) (EmptyStmt u))
