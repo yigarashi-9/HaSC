@@ -8,8 +8,7 @@ import qualified Text.Parsec.Token as P
 import           Text.Parsec.Language
 
 import Control.Monad.Identity(Identity)
-import Control.Monad(liftM, liftM2, liftM3, foldM, when)
-import Control.Applicative((<*))
+import Control.Monad(liftM, liftM2, liftM3)
 
 import AST
 
@@ -83,8 +82,7 @@ externalDecl =  try (liftM2 Decl getPosition decl)
 decl :: Parser DeclList
 decl = do
   ty    <- typeSpecifier
-  decls <- declarator `sepBy1` (symbol ",")
-  semi
+  decls <- declarator `sepBy1` (symbol ",") <* semi
   return (genDecl ty decls)
 
 genDecl :: Type -> [(String, DirectDecl)] -> DeclList
@@ -112,8 +110,7 @@ funcPrototype :: Parser EDecl
 funcPrototype = do
   pos <- getPosition
   ty  <- typeSpecifier
-  (p, name, parms) <- funcDeclarator
-  semi
+  (p, name, parms) <- funcDeclarator <* semi
   return $ FuncPrototype pos (checkPointer p ty) name parms
 
 funcDeclarator :: Parser (String, Identifier, [(Type, Identifier)])
@@ -184,8 +181,7 @@ whileStmt = do
 
 forStmt :: Parser Stmt
 forStmt = do
-  pos  <- getPosition
-  symbol "for" >> symbol "("
+  pos    <- getPosition <* (symbol "for" >> symbol "(")
   dec    <- expr <* semi
   cond   <- expr <* semi
   update <- expr <* symbol ")"

@@ -72,6 +72,8 @@ instance Eq Expr where
     (ArrayAccess _ d s)     == (ArrayAccess _ d' s') = d == d' && s == s'
     (ApplyFunc _ d s)       == (ApplyFunc _ d' s')   = d == d' && s == s'
     (MultiExpr _ es)        == (MultiExpr _ es')     = es == es'
+    (MultiExpr _ [e])       == e'                    = e == e'
+    e'                      == (MultiExpr _ [e])     = e == e'
     (Constant _ c)          == (Constant _ c')       = c == c'
     (IdentExpr _ i)         == (IdentExpr _ i')      = i == i'
     _                       == _                     = False
