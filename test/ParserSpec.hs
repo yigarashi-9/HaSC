@@ -2,12 +2,13 @@
 module ParserSpec where
 
 import Text.Parsec
+import Text.Parsec.Pos
 import Test.Hspec
 import Parser
 import AST
 
-u :: a
-u = undefined
+u :: SourcePos
+u = newPos "test" 0 0
 
 v :: String -> Expr
 v = IdentExpr u
@@ -41,3 +42,17 @@ spec = do
                 (Right $ BinaryPrim u "<=" (v "a") $ BinaryPrim u "+"
                            (UnaryPrim u "-" (ApplyFunc u "f" [(v "b")]))
                            (UnaryPrim u "*" (v "c")))
+
+    it "Expression" $ do
+      parse expr "" "a = 3, f(b)" `shouldBe`
+                (Right $ MultiExpr u [(AssignExpr u (v "a") (c 3)),
+                                      (ApplyFunc u "f" [(v "b")])])
+
+    it "Statement" $ do
+      parse stmt "" ";" `shouldBe` (Right $ EmptyStmt u)
+      parse stmt "" "a;" `shouldBe` (Right $ ExprStmt u $ MultiExpr u [(v "a")])
+      parse stmt "" "{int a, b[20]; int *c; a = c;}" `shouldBe`
+                (Right $ CompoundStmt u
+                         [DeclStmt u [(CInt, Variable u "a"), (CInt, Sequence u "b" 20)],
+                          DeclStmt u [(CPointer CInt, Variable u "c")],
+                          ExprStmt u $ MultiExpr u $ [AssignExpr u (v "a") (v "c")]])
