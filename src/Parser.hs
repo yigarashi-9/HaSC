@@ -136,7 +136,7 @@ funcDef = do
   pos <- getPosition
   ty  <- typeSpecifier
   (p, name, parms) <- funcDeclarator
-  stmts <- compoundStmt
+  stmts <- liftM2 CompoundStmt getPosition compoundStmt
   return $ FuncDef pos (checkPointer p ty) name parms stmts
 
 stmt :: Parser Stmt

@@ -108,4 +108,4 @@ spec = do
                                               (CInt, "b"),
                                               (CPointer CInt, "c"),
                                               (CInt, "d")]
-                 [WhileStmt u exprSample stmtSample1])
+                 (CompoundStmt u [WhileStmt u exprSample stmtSample1]))

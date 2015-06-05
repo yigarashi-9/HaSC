@@ -9,7 +9,7 @@ type DeclList   = [(Type, DirectDecl)] -- Variable Declaration List - int a, *b 
 
 data EDecl = Decl          SourcePos DeclList
            | FuncPrototype SourcePos Type Identifier [(Type, Identifier)]
-           | FuncDef       SourcePos Type Identifier [(Type, Identifier)] [Stmt]
+           | FuncDef       SourcePos Type Identifier [(Type, Identifier)] Stmt
            deriving(Show)
 
 instance Eq EDecl where
