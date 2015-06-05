@@ -4,11 +4,12 @@ import Text.Parsec
 
 type Program    = [EDecl]
 type Identifier = String
-type DeclList   = [(Type, DirectDecl)]
+type DeclList   = [(Type, DirectDecl)] -- Variable Declaration List - int a, *b ...
+
 
 data EDecl = Decl          SourcePos DeclList
            | FuncPrototype SourcePos Type Identifier [(Type, Identifier)]
-           | FuncDef       SourcePos Type Identifier [(Type, Identifier)] [Stmt]
+           | FuncDef       SourcePos Type Identifier [(Type, Identifier)] Stmt
            deriving(Show)
 
 instance Eq EDecl where
@@ -22,17 +23,26 @@ instance Eq EDecl where
 data Type = CPointer Type
           | CInt
           | CVoid
-          deriving(Show, Eq)
+          deriving(Eq)
 
+instance Show Type where
+    show (CPointer CInt) = "int *"
+    show (CInt)          = "int "
+    show (CVoid)         = "void "
+    show _               = error "invalid type"
 
 data DirectDecl = Variable SourcePos Identifier
                 | Sequence SourcePos Identifier Integer
-                deriving(Show)
+
+instance Show DirectDecl where
+    show (Variable _ s) = show s
+    show (Sequence _ s size) = concat [show s, "[", show size, "]"]
 
 instance Eq DirectDecl where
     (Variable _ i)    == (Variable _ i')     = i == i'
     (Sequence _ i si) == (Sequence _ i' si') = i == i' && si == si'
     _                 == _                   = False
+
 
 data Stmt = EmptyStmt    SourcePos
           | ExprStmt     SourcePos Expr
@@ -72,6 +82,8 @@ instance Eq Expr where
     (ArrayAccess _ d s)     == (ArrayAccess _ d' s') = d == d' && s == s'
     (ApplyFunc _ d s)       == (ApplyFunc _ d' s')   = d == d' && s == s'
     (MultiExpr _ es)        == (MultiExpr _ es')     = es == es'
+    (MultiExpr _ [e])       == e'                    = e == e'
+    e'                      == (MultiExpr _ [e])     = e == e'
     (Constant _ c)          == (Constant _ c')       = c == c'
     (IdentExpr _ i)         == (IdentExpr _ i')      = i == i'
     _                       == _                     = False
