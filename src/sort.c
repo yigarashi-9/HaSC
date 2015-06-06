@@ -13,7 +13,7 @@ int main(){
 void initialize(int *array){
   int i;
   for(i = 0; i < 8; i = i + 1){
-    array[i] = 8 - i;
+    *(array+i) = 8 - i;
   }
 }
 
