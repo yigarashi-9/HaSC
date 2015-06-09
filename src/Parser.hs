@@ -9,6 +9,7 @@ import           Text.Parsec.Language
 
 import Control.Monad.Identity(Identity)
 import Control.Monad(liftM, liftM2, liftM3)
+import Control.Applicative((<*))
 
 import AST
 
