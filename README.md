@@ -1,4 +1,4 @@
-# HaSC
+# HaSC   [![Build Status](https://travis-ci.org/yu-i9/HaSC.svg?branch=master)](https://travis-ci.org/yu-i9/HaSC)
 Haskell Small-C Compiler
 
 ## 概要
