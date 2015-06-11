@@ -109,3 +109,6 @@ spec = do
                                               (CPointer CInt, "c"),
                                               (CInt, "d")]
                  (CompoundStmt u [WhileStmt u exprSample stmtSample1]))
+    it "Syntax Sugar" $ do
+      parse assignExpr "" "-a" `shouldBe`
+                (Right $ BinaryPrim u "*" (c (-1)) (v "a"))

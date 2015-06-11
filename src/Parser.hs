@@ -247,7 +247,7 @@ pointerOp :: Parser String
 pointerOp = option "" (symbol "*")
 
 table :: [[Operator String () Identity Expr]]
-table = [map op_prefix ["-", "&", "*"],
+table = [(Prefix op_neg):(map op_prefix ["&", "*"]),
          map op_infix ["*", "/"],
          map op_infix ["+", "-"],
          map op_infix ["<=", "<", ">", ">="],
@@ -258,8 +258,12 @@ table = [map op_prefix ["-", "&", "*"],
       op_func f s = do {
                       pos <- getPosition <* (reservedOp s);
                       return $ f pos s;   }
+      op_neg      = do {
+                      pos <- getPosition <* (reservedOp "-");
+                      return $ BinaryPrim pos "*" (Constant pos (-1)) }
       op_prefix s = Prefix (op_func UnaryPrim s)
       op_infix  s = Infix  (op_func BinaryPrim s) AssocLeft
+
 
 liftTM :: Monad m => m a -> m b -> m (a, b)
 liftTM ma mb = do
