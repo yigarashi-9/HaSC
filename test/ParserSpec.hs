@@ -19,7 +19,7 @@ c = Constant u
 exprSample :: Expr
 exprSample = BinaryPrim u "||" (v "a")
              (BinaryPrim u "&&" (v "b")
-              (ArrayAccess u (v "c") (MultiExpr u [(v "d")])))
+              (UnaryPrim u "*" (BinaryPrim u "+" (v "c") (MultiExpr u [(v "d")]))))
 
 stmtSample1 :: Stmt
 stmtSample1 = CompoundStmt u
@@ -61,9 +61,9 @@ spec = do
                 (Right $ AssignExpr u (v "a") $ ApplyFunc u "f"
                                                 [(v "b"),
                                                  BinaryPrim u "*" (v "c") (v "d")])
-      parse assignExpr "" "a <= -f(b) + *c" `shouldBe`
+      parse assignExpr "" "a <= f(b) + *c" `shouldBe`
                 (Right $ BinaryPrim u "<=" (v "a") $ BinaryPrim u "+"
-                           (UnaryPrim u "-" (ApplyFunc u "f" [(v "b")]))
+                           (ApplyFunc u "f" [(v "b")])
                            (UnaryPrim u "*" (v "c")))
 
     it "Expression" $ do
@@ -91,9 +91,11 @@ spec = do
                 (Right $ WhileStmt u exprSample stmtSample1)
       parse stmt "" "return c[2 + a][b || c];" `shouldBe`
                 (Right $ ReturnStmt u $
-                         ArrayAccess u (ArrayAccess u (v "c")
-                                                      (BinaryPrim u "+" (c 2) (v "a")))
-                                       (BinaryPrim u "||" (v "b") (v "c")))
+                         UnaryPrim u "*"
+                         (BinaryPrim u "+"
+                          (UnaryPrim u "*" (BinaryPrim u "+" (v "c")
+                                            (BinaryPrim u "+" (c 2) (v "a"))))
+                                       (BinaryPrim u "||" (v "b") (v "c"))))
 
     it "Program" $ do
       parse externalDecl "" "int a, *b, c[100];" `shouldBe`
@@ -112,3 +114,5 @@ spec = do
     it "Syntax Sugar" $ do
       parse assignExpr "" "-a" `shouldBe`
                 (Right $ BinaryPrim u "*" (c (-1)) (v "a"))
+      parse assignExpr "" "&(*a)" `shouldBe` (Right $ (v "a"))
+      parse assignExpr "" "*(&a)" `shouldBe` (Right $ (v "a"))

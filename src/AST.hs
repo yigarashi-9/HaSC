@@ -67,7 +67,6 @@ instance Eq Stmt where
 data Expr = AssignExpr   SourcePos Expr Expr
           | UnaryPrim    SourcePos String Expr
           | BinaryPrim   SourcePos String Expr Expr
-          | ArrayAccess  SourcePos Expr Expr
           | ApplyFunc    SourcePos String [Expr]
           | MultiExpr    SourcePos [Expr]
           | Constant     SourcePos Integer
@@ -79,7 +78,6 @@ instance Eq Expr where
     (UnaryPrim _ op e)      == (UnaryPrim _ op' e')  = op == op' && e == e'
     (BinaryPrim _ op e1 e2) == (BinaryPrim _ op' e1' e2')
         = op == op' && e1 == e1' && e2 == e2'
-    (ArrayAccess _ d s)     == (ArrayAccess _ d' s') = d == d' && s == s'
     (ApplyFunc _ d s)       == (ApplyFunc _ d' s')   = d == d' && s == s'
     (MultiExpr _ es)        == (MultiExpr _ es')     = es == es'
     (MultiExpr _ [e])       == e'                    = e == e'

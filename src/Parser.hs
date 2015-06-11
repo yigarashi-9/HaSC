@@ -210,7 +210,7 @@ assign = do
   return $ AssignExpr pos dest src
 
 logicalOrExpr :: Parser Expr
-logicalOrExpr = buildExpressionParser table postFixExpr
+logicalOrExpr = liftM compressPointer $ buildExpressionParser table postFixExpr
 
 postFixExpr :: Parser Expr
 postFixExpr =  try (postFixHeader >>= arrayAccess)
@@ -226,7 +226,7 @@ postFixHeader =  try (liftM3 ApplyFunc getPosition
 arrayAccess :: Expr -> Parser Expr
 arrayAccess h = do
   accesser <- many1 $ liftTM getPosition (brackets expr)
-  return $ foldl (\acc (p, i) -> ArrayAccess p acc i) h accesser
+  return $ foldl (\acc (p, i) -> UnaryPrim p "*" (BinaryPrim p "+" acc i)) h accesser
 
 primaryExpr :: Parser Expr
 primaryExpr =  try (parens expr)
@@ -270,3 +270,8 @@ liftTM ma mb = do
   a <- ma
   b <- mb
   return (a, b)
+
+compressPointer :: Expr -> Expr
+compressPointer (UnaryPrim _ "*" (UnaryPrim _ "&" e)) = e
+compressPointer (UnaryPrim _ "&" (UnaryPrim _ "*" e)) = e
+compressPointer e = e
