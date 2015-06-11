@@ -20,7 +20,7 @@ library
   Default-Language: Haskell2010
   build-depends: base >= 4 && < 5
                , parsec == 3.1.9
-               , mtl    == 2.2.1
+               , mtl    == 2.1.2
   exposed-modules:
     Parser
     AST
