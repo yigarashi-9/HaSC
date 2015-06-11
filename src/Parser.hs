@@ -197,7 +197,12 @@ returnStmt = do
   symbol "return" >> liftM (ReturnStmt pos) expr
 
 expr :: Parser Expr
-expr = liftM2 MultiExpr getPosition (assignExpr `sepBy` comma)
+expr = do
+  p <- getPosition
+  e <- (assignExpr `sepBy` comma)
+  case e of
+    [e'] -> return e'
+    _    -> return $ MultiExpr p e
 
 assignExpr :: Parser Expr
 assignExpr = try assign <|> logicalOrExpr <?> "Assign Expr"
