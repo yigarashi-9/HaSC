@@ -23,8 +23,8 @@ exprSample = BinaryPrim u "||" (v "a")
 
 stmtSample1 :: Stmt
 stmtSample1 = CompoundStmt u
-             [DeclStmt u [(CInt, Variable u "a"), (CInt, Sequence u "b" 20)],
-              DeclStmt u [(CPointer CInt, Variable u "c")],
+             [DeclStmt u [(DeclInt, Variable u "a"), (DeclInt, Sequence u "b" 20)],
+              DeclStmt u [(DeclPointer DeclInt, Variable u "c")],
               ExprStmt u $ MultiExpr u $ [AssignExpr u (v "a")
                                                        (BinaryPrim u "+" (v "c") (v "d"))]]
 
@@ -99,17 +99,17 @@ spec = do
 
     it "Program" $ do
       parse externalDecl "" "int a, *b, c[100];" `shouldBe`
-                (Right $ Decl u [(CInt, Variable u "a"),
-                                 (CPointer CInt, Variable u "b"),
-                                 (CInt, Sequence u "c" 100)])
+                (Right $ Decl u [(DeclInt, Variable u "a"),
+                                 (DeclPointer DeclInt, Variable u "b"),
+                                 (DeclInt, Sequence u "c" 100)])
       parse externalDecl "" "void func(int a, int *b);" `shouldBe`
-                (Right $ FuncPrototype u CVoid "func"
-                           [(CInt, "a"), (CPointer CInt, "b")])
+                (Right $ FuncPrototype u DeclVoid "func"
+                           [(DeclInt, "a"), (DeclPointer DeclInt, "b")])
       parse externalDecl "" longTestCase3 `shouldBe`
-                (Right $ FuncDef u CVoid "f" [(CInt, "a"),
-                                              (CInt, "b"),
-                                              (CPointer CInt, "c"),
-                                              (CInt, "d")]
+                (Right $ FuncDef u DeclVoid "f" [(DeclInt, "a"),
+                                              (DeclInt, "b"),
+                                              (DeclPointer DeclInt, "c"),
+                                              (DeclInt, "d")]
                  (CompoundStmt u [WhileStmt u exprSample stmtSample1]))
     it "Syntax Sugar" $ do
       parse assignExpr "" "-a" `shouldBe`

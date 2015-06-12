@@ -4,12 +4,12 @@ import Text.Parsec
 
 type Program    = [EDecl]
 type Identifier = String
-type DeclList   = [(Type, DirectDecl)] -- Variable Declaration List - int a, *b ...
+type DeclList   = [(DeclType, DirectDecl)] -- Variable Declaration List - int a, *b ...
 
 
 data EDecl = Decl          SourcePos DeclList
-           | FuncPrototype SourcePos Type Identifier [(Type, Identifier)]
-           | FuncDef       SourcePos Type Identifier [(Type, Identifier)] Stmt
+           | FuncPrototype SourcePos DeclType Identifier [(DeclType, Identifier)]
+           | FuncDef       SourcePos DeclType Identifier [(DeclType, Identifier)] Stmt
            deriving(Show)
 
 instance Eq EDecl where
@@ -20,16 +20,16 @@ instance Eq EDecl where
         = ty == ty' && n == n' && a == a' && s == s'
     _ == _ = False
 
-data Type = CPointer Type
-          | CInt
-          | CVoid
-          deriving(Eq)
+data DeclType = DeclPointer DeclType
+              | DeclInt
+              | DeclVoid
+              deriving(Eq)
 
-instance Show Type where
-    show (CPointer CInt) = "int *"
-    show (CInt)          = "int "
-    show (CVoid)         = "void "
-    show _               = error "invalid type"
+instance Show DeclType where
+    show (DeclPointer DeclInt) = "int *"
+    show (DeclInt)             = "int "
+    show (DeclVoid)            = "void "
+    show _                     = error "invalid type"
 
 data DirectDecl = Variable SourcePos Identifier
                 | Sequence SourcePos Identifier Integer
@@ -51,6 +51,7 @@ data Stmt = EmptyStmt    SourcePos
           | IfStmt       SourcePos Expr Stmt Stmt
           | WhileStmt    SourcePos Expr Stmt
           | ReturnStmt   SourcePos Expr
+          | RetVoidStmt  SourcePos
           deriving(Show)
 
 instance Eq Stmt where
@@ -61,6 +62,7 @@ instance Eq Stmt where
     (IfStmt _ e tr fl)  == (IfStmt _ e' tr' fl') = e == e' && tr == tr' && fl == fl'
     (WhileStmt _ e stm) == (WhileStmt _ e' stm') = e == e' && stm == stm'
     (ReturnStmt _ e)    == (ReturnStmt _ e')     = e == e'
+    (RetVoidStmt _)     == (RetVoidStmt _)       = True
     _                   == _                     = False
 
 

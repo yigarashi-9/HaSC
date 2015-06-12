@@ -86,7 +86,7 @@ decl = do
   decls <- declarator `sepBy1` (symbol ",") <* semi
   return (genDecl ty decls)
 
-genDecl :: Type -> [(String, DirectDecl)] -> DeclList
+genDecl :: DeclType -> [(String, DirectDecl)] -> DeclList
 genDecl ty = foldr f []
     where f (p, dec) acc = (checkPointer p ty, dec):acc
 
@@ -114,23 +114,23 @@ funcPrototype = do
   (p, name, parms) <- funcDeclarator <* semi
   return $ FuncPrototype pos (checkPointer p ty) name parms
 
-funcDeclarator :: Parser (String, Identifier, [(Type, Identifier)])
+funcDeclarator :: Parser (String, Identifier, [(DeclType, Identifier)])
 funcDeclarator = do
   p     <- pointerOp
   name  <- identifier
   parms <- parens $ parameterDecl `sepBy` (symbol ",")
   return $ (p, name, parms)
 
-parameterDecl :: Parser (Type, Identifier)
+parameterDecl :: Parser (DeclType, Identifier)
 parameterDecl = do
   ty   <- typeSpecifier
   p    <- pointerOp
   name <- identifier
   return (checkPointer p ty, name)
 
-typeSpecifier :: Parser Type
-typeSpecifier =  (symbol "int"  >> return CInt)
-             <|> (symbol "void" >> return CVoid)
+typeSpecifier :: Parser DeclType
+typeSpecifier =  (symbol "int"  >> return DeclInt)
+             <|> (symbol "void" >> return DeclVoid)
 
 funcDef :: Parser EDecl
 funcDef = do
@@ -194,7 +194,8 @@ forStmt = do
 returnStmt :: Parser Stmt
 returnStmt = do
   pos <- getPosition
-  symbol "return" >> liftM (ReturnStmt pos) expr
+  symbol "return"
+  (liftM (ReturnStmt pos) (try expr)) <|> (return $ RetVoidStmt pos)
 
 expr :: Parser Expr
 expr = do
@@ -245,8 +246,8 @@ primaryExpr =  try (parens expr)
             Utility
    ************************** -}
 
-checkPointer :: String -> Type -> Type
-checkPointer p ty = if p == "*" then CPointer ty else ty
+checkPointer :: String -> DeclType -> DeclType
+checkPointer p ty = if p == "*" then DeclPointer ty else ty
 
 pointerOp :: Parser String
 pointerOp = option "" (symbol "*")
