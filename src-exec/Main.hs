@@ -1,3 +1,15 @@
 
+import Parser
+import Semantic
+
+import Control.Monad
+import Control.Exception
+import System.IO
+import System.Exit
+
 main :: IO ()
-main = undefined
+main = catch (liftM semanticAnalyze (parseProgram "test/test.c") >>= putStrLn) err
+    where
+      err e = do
+        hPutStrLn stderr $ show (e :: SomeException)
+        exitFailure
