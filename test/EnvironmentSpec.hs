@@ -10,10 +10,10 @@ import Control.Exception
 import AST
 import Environment
 
-getEnvEmpty :: State Env a -> Env
+getEnvEmpty :: StateEnv a -> Env
 getEnvEmpty s = M.map sort $ execState s M.empty
 
-runWithEnv :: State Env a -> a
+runWithEnv :: StateEnv a -> a
 runWithEnv s = evalState s $ M.fromList [(0, [("a", (Var, CInt)),
                                               ("b", (Func, CFun CInt [CPointer CInt]))]),
                                          (1, [("c", (Parm, CPointer CInt))]),
