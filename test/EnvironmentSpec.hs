@@ -44,7 +44,7 @@ spec = do
                               ("c", (Var, CArray CInt 10)),
                               ("d", (Var, CArray (CPointer CInt) 20))])]
       (getEnvEmpty . collectGDecl) testcase2 `shouldBe`
-             M.fromList [(0, [("a", (Func, CFun CInt [CInt, CPointer CInt]))])]
+             M.fromList [(0, [("a", (FuncProto, CFun CInt [CInt, CPointer CInt]))])]
       (getEnvEmpty . collectGDecl) testcase3 `shouldBe`
              M.fromList [(0, [("a", (Func, CFun CInt []))])]
 

@@ -69,7 +69,7 @@ instance Eq Stmt where
 data Expr = AssignExpr   SourcePos Expr Expr
           | UnaryPrim    SourcePos String Expr
           | BinaryPrim   SourcePos String Expr Expr
-          | ApplyFunc    SourcePos String [Expr]
+          | ApplyFunc    SourcePos Identifier [Expr]
           | MultiExpr    SourcePos [Expr]
           | Constant     SourcePos Integer
           | IdentExpr    SourcePos Identifier

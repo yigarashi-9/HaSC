@@ -5,7 +5,7 @@ import           Text.Parsec.Pos
 import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.State
-
+import Debug.Trace
 import AST
 
 type StateEnv = State Env
@@ -13,7 +13,7 @@ type StateEnv = State Env
 type Env   = M.Map Level [Info]
 type Level = Int
 type Info  = (Identifier, (Kind, CType))
-data Kind  = Var | Func | Parm deriving(Show, Eq, Ord)
+data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
 data CType = CInt
            | CVoid
            | CNone
@@ -28,12 +28,27 @@ collectGDecl :: Program -> StateEnv ()
 collectGDecl = mapM_ collectEdecl
 
 collectEdecl :: EDecl -> StateEnv ()
-collectEdecl (Decl _ l)                   = mapM_ (appendEnv 0) (map convVar l)
-collectEdecl (FuncPrototype _ ty nm args) = appendEnv 0 (funcDecl nm ty args)
-collectEdecl (FuncDef  _ ty nm args stmt) = appendEnv 0 (funcDecl nm ty args)
+collectEdecl (Decl _ l) = mapM_ (appendEnv 0) (map convVar l)
+collectEdecl (FuncPrototype p ty nm args)
+    = do {
+        let { funcInfo = funcDecl ty args FuncProto } ;
+        info <- findAtTheLevel 0 nm;
+        case info of
+          (Just i) -> if i == funcInfo
+                      then return ()
+                      else error $ concat [show p,
+                                           ": invalid prototype decralation about ", nm]
+          Nothing  -> appendEnv 0 (nm, funcInfo); }
+collectEdecl (FuncDef p ty nm args stmt)
+    = do {
+        let { funcInfo = funcDecl ty args Func };
+        info <- findAtTheLevel 0 nm;
+        case info of
+          (Just i) -> error $ concat [show p, ": duplicate decralation about ", nm]
+          Nothing  -> appendEnv 0 (nm, funcInfo); }
 
-funcDecl :: Identifier -> DeclType -> [(DeclType, Identifier)] -> Info
-funcDecl nm ty args = (nm, (Func, CFun (convType ty) $ map (convType . fst) args))
+funcDecl :: DeclType -> [(DeclType, Identifier)] -> Kind -> (Kind, CType)
+funcDecl ty args ki = (ki, CFun (convType ty) $ map (convType . fst) args)
 
 convVar :: (DeclType, DirectDecl) -> Info
 convVar (t, d) = let ty = convType t in
@@ -52,18 +67,30 @@ convType (DeclVoid)       = CVoid
 appendEnv :: Level -> Info -> StateEnv ()
 appendEnv lev info = liftM (M.insertWith (++) lev [info]) get >>= put
 
+appendWithDupCheck :: SourcePos -> Level -> [Info] -> StateEnv ()
+appendWithDupCheck p lev = mapM_ f
+    where f info = do i <- findAtTheLevel lev (fst info)
+                      case i of
+                        (Just _) -> error $ concat [show p,
+                                                    ": duplicate variable decralations ",
+                                                    fst info]
+                        Nothing  -> appendEnv lev info
+
 deleteLevel :: Level -> StateEnv ()
 deleteLevel lev = (liftM (M.delete lev) get) >>= put
 
-withEnv :: Level -> [Info] -> StateEnv a -> StateEnv a
-withEnv lev l body = mapM_ (appendEnv lev) l >> body <* deleteLevel lev
+withEnv :: Level -> StateEnv () -> StateEnv a -> StateEnv a
+withEnv lev mkenv body = mkenv >> body <* deleteLevel lev
 
 find :: SourcePos -> Level -> Identifier -> StateEnv (Kind, CType)
 find p lev name = do
   if lev <= (-1)
   then error $ concat [show p, ": varialble '", name, "' is not defined."]
   else do
-    env <- (get :: StateEnv Env)
+    env <- get
     case (M.lookup lev env >>= lookup name) of
       (Just info) -> return info
       Nothing     -> find p (lev-1) name
+
+findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe (Kind, CType))
+findAtTheLevel lev name = liftM (\e -> M.lookup lev e >>= lookup name) get
