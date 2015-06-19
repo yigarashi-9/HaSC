@@ -19,16 +19,21 @@ library
   Hs-source-dirs: src
   Default-Language: Haskell2010
   build-depends: base >= 4 && < 5
-               , parsec == 3.1.9
-               , mtl    == 2.1.2
+               , parsec     == 3.1.9
+               , mtl        == 2.2.1
+               , containers == 0.5.6.2
   exposed-modules:
     Parser
     AST
+    Semantic
+    Environment
   ghc-options:   -Wall
 
 executable HaSC
   main-is:             Main.hs
   build-depends:       base >=4 && <5
+                     , HaSC
+                     , mtl == 2.2.1
   hs-source-dirs:      src-exec
   default-language:    Haskell2010
 
@@ -40,5 +45,7 @@ test-suite spec
   build-depends: base >= 4 && < 5
                , hspec == 2.1.7
                , parsec == 3.1.9
+               , containers == 0.5.6.2
+               , mtl        == 2.2.1
                , HaSC
   ghc-options: -Wall
