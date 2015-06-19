@@ -203,6 +203,7 @@ expr = do
   e <- (assignExpr `sepBy` comma)
   case e of
     [e'] -> return e'
+    []   -> fail "bad expr"
     _    -> return $ MultiExpr p e
 
 assignExpr :: Parser Expr
