@@ -279,6 +279,13 @@ liftTM ma mb = do
   return (a, b)
 
 compressPointer :: Expr -> Expr
-compressPointer (UnaryPrim _ "*" (UnaryPrim _ "&" e)) = e
-compressPointer (UnaryPrim _ "&" (UnaryPrim _ "*" e)) = e
+compressPointer (UnaryPrim _ "*" (UnaryPrim _ "&" e)) = compressPointer e
+compressPointer (UnaryPrim _ "&" (UnaryPrim _ "*" e)) = compressPointer e
+compressPointer (UnaryPrim p op e)      = (UnaryPrim p op $ compressPointer e)
+compressPointer (BinaryPrim p op e1 e2) = (BinaryPrim p op (compressPointer e1)
+                                                           (compressPointer e2))
+compressPointer (ApplyFunc p f es)      = (ApplyFunc p f (map compressPointer es))
+compressPointer (AssignExpr p e1 e2)    = (AssignExpr p (compressPointer e1)
+                                                        (compressPointer e2))
+compressPointer (MultiExpr p es)        = (MultiExpr p (map compressPointer es))
 compressPointer e = e
