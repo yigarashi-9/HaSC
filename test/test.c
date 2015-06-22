@@ -5,6 +5,8 @@ int f(int *b, int c){
 }
 
 int main(){
-  int *a, a;
-  return 0;
+  int a[10];
+  int *b, c;
+  *(b + c) = a[1];
+  b = &c;
 }
