@@ -27,6 +27,7 @@ library
     AST
     Semantic
     Environment
+    AnalyzedAST
   ghc-options:   -Wall
 
 executable HaSC
