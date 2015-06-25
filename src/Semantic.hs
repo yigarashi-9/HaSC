@@ -27,7 +27,7 @@ analyze :: Program -> StateEnv A_Program
 analyze prog = liftM concat (mapM analyzeEDecl prog)
 
 analyzeEDecl :: EDecl -> StateEnv [A_EDecl]
-analyzeEDecl (Decl p l)              = return $ (map (A_Decl . convVar p) l)
+analyzeEDecl (Decl p l)              = return $ (map (A_Decl . convVar p 0) l)
 analyzeEDecl (FuncPrototype _ _ _ _) = return []
 analyzeEDecl (FuncDef p  _ name args stmt)
     = do {
@@ -40,7 +40,7 @@ analyzeEDecl (FuncDef p  _ name args stmt)
 analyzeStmt :: Level -> Stmt -> StateEnv A_Stmt
 analyzeStmt lev (CompoundStmt _ s)  = withEnv (lev+1) (return ())
                                       (liftM A_CompoundStmt (mapM (analyzeStmt $ lev+1) s))
-analyzeStmt lev (DeclStmt p l)      = let info = (map (convVar p) l)
+analyzeStmt lev (DeclStmt p l)      = let info = (map (convVar p lev) l)
                                       in mapM_ (appendWithDupCheck p lev) info
                                              >> (return $ A_DeclStmt info)
 analyzeStmt _   (EmptyStmt _)       = return A_EmptyStmt
@@ -77,8 +77,10 @@ analyzeExpr lev (Constant p n)   = return $ A_Constant n
 analyzeExpr lev (IdentExpr p n)
     = do info <- findFromJust p lev n
          case info of
-           (_, (Func, _))      -> error $ concat [show p, ": you cannot refer to func ", n]
-           (_, (FuncProto, _)) -> error $ concat [show p, ": you cannot refer to func ", n]
+           (_, (Func, _, _))
+               -> error $ concat [show p, ": you cannot refer to func ", n]
+           (_, (FuncProto, _, _))
+               -> error $ concat [show p, ": you cannot refer to func ", n]
            s -> return $ A_IdentExpr s
 
 
@@ -169,9 +171,9 @@ exprTypeCheck (A_ApplyFunc p info args)
     = do {
         argTypes <- mapM exprTypeCheck args;
         case snd info of
-          (Func, CFun ty parms) -> if argTypes == parms
-                                   then return ty
-                                   else error $ show p ++ ": bad arguments"
+          (Func, CFun ty parms, _) -> if argTypes == parms
+                                      then return ty
+                                      else error $ show p ++ ": bad arguments"
           _  -> error $ show p ++ ": '" ++ fst info ++ "' is not function" }
 exprTypeCheck (A_MultiExpr es) = liftM last (mapM exprTypeCheck es)
 exprTypeCheck (A_Constant n)   = return CInt
@@ -192,7 +194,7 @@ checkAddressReferForm _ (A_IdentExpr _) = wellTyped
 checkAddressReferForm p _ = error $ concat [show p, "invalid argument of '&'"]
 
 checkAssignForm :: SourcePos -> A_Expr -> StateEnv()
-checkAssignForm p (A_IdentExpr (_, (kind, ty)))
+checkAssignForm p (A_IdentExpr (_, (kind, ty, _)))
     = case (kind, ty) of
         (Var, (CArray _ _))  -> error $ concat [show p, " : invalid assign"]
         (Var, _)             -> wellTyped

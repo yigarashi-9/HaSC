@@ -16,10 +16,10 @@ getEnvEmpty s = M.map sort $ fst (runWriter $ execStateT s M.empty)
 
 runWithEnv :: StateEnv a -> a
 runWithEnv s = fst (runWriter (evalStateT s $ M.fromList
-                                  [(0, [("a", (Var, CInt)),
-                                        ("b", (Func, CFun CInt [CPointer CInt]))]),
-                                   (1, [("c", (Parm, CPointer CInt))]),
-                                   (2, [("d", (Var, CInt))])]))
+                                  [(0, [("a", (Var, CInt, 0)),
+                                        ("b", (Func, CFun CInt [CPointer CInt], 0))]),
+                                   (1, [("c", (Parm, CPointer CInt, 1))]),
+                                   (2, [("d", (Var, CInt, 2))])]))
 
 u :: SourcePos
 u = newPos "test" 0 0
@@ -41,17 +41,18 @@ spec = do
   describe "Environment" $ do
     it "collect global decralations" $ do
       (getEnvEmpty . collectGDecl) testcase1 `shouldBe`
-             M.fromList [(0, [("a", (Var, CInt)),
-                              ("b", (Var, CPointer CInt)),
-                              ("c", (Var, CArray CInt 10)),
-                              ("d", (Var, CArray (CPointer CInt) 20))])]
+             M.fromList [(0, [("a", (Var, CInt, 0)),
+                              ("b", (Var, CPointer CInt, 0)),
+                              ("c", (Var, CArray CInt 10, 0)),
+                              ("d", (Var, CArray (CPointer CInt) 20, 0))])]
       (getEnvEmpty . collectGDecl) testcase2 `shouldBe`
-             M.fromList [(0, [("a", (FuncProto, CFun CInt [CInt, CPointer CInt]))])]
+             M.fromList [(0, [("a", (FuncProto, CFun CInt [CInt, CPointer CInt], 0))])]
       (getEnvEmpty . collectGDecl) testcase3 `shouldBe`
-             M.fromList [(0, [("a", (Func, CFun CInt []))])]
+             M.fromList [(0, [("a", (Func, CFun CInt [], 0))])]
 
     it "find declaration" $ do
-      (runWithEnv $ find u 2 "d") `shouldBe` ("d", (Var, CInt))
-      (runWithEnv $ find u 2 "c") `shouldBe` ("c", (Parm, CPointer CInt))
-      (runWithEnv $ find u 1 "b") `shouldBe` ("b", (Func, CFun CInt [CPointer CInt]))
-      evaluate (runWithEnv $ find u 1 "e") `shouldThrow` anyException
+      (runWithEnv $ findFromJust u 2 "d") `shouldBe` ("d", (Var, CInt, 2))
+      (runWithEnv $ findFromJust u 2 "c") `shouldBe` ("c", (Parm, CPointer CInt, 1))
+      (runWithEnv $ findFromJust u 1 "b") `shouldBe` ("b",
+                                                      (Func, CFun CInt [CPointer CInt], 0))
+      evaluate (runWithEnv $ findFromJust u 1 "e") `shouldThrow` anyException

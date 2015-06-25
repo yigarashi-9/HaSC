@@ -26,19 +26,9 @@ data DeclType = DeclPointer DeclType
               | DeclVoid
               deriving(Eq, Show)
 
--- instance Show DeclType where
---     show (DeclPointer DeclInt) = "int *"
---     show (DeclInt)             = "int "
---     show (DeclVoid)            = "void "
---     show _                     = error "invalid type"
-
 data DirectDecl = Variable SourcePos Identifier
                 | Sequence SourcePos Identifier Integer
                 deriving(Show)
-
--- instance Show DirectDecl where
---     show (Variable _ s) = show s
---     show (Sequence _ s size) = concat [show s, "[", show size, "]"]
 
 instance Eq DirectDecl where
     (==) (Variable _ i)    (Variable _ i')     = i == i'

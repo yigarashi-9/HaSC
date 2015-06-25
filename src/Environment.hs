@@ -6,7 +6,7 @@ import           Control.Applicative
 import           Control.Monad
 import           Control.Monad.Writer
 import           Control.Monad.State.Strict
-import Debug.Trace
+
 import AST
 
 type StateEnv = StateT Env (Writer [String])
@@ -17,7 +17,7 @@ runEnv s = runWriter (evalStateT s M.empty)
 
 type Env   = M.Map Level [Info]
 type Level = Int
-type Info  = (Identifier, (Kind, CType))
+type Info  = (Identifier, (Kind, CType, Level))
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
 data CType = CInt
            | CVoid
@@ -33,7 +33,7 @@ collectGDecl :: Program -> StateEnv ()
 collectGDecl = mapM_ collectEdecl
 
 collectEdecl :: EDecl -> StateEnv ()
-collectEdecl (Decl p l) = mapM_ (appendEnv 0) (map (convVar p) l)
+collectEdecl (Decl p l) = mapM_ (appendEnv 0) (map (convVar p 0) l)
 collectEdecl (FuncPrototype p ty nm args)
     = do {
         let { funcInfo = funcDecl ty args FuncProto } ;
@@ -51,29 +51,29 @@ collectEdecl (FuncDef p ty nm args stmt)
         info <- findAtTheLevel 0 nm;
         case info of
           (Just i) -> case i of
-                        (FuncProto, ty) -> if ty == snd funcInfo
-                                                then appendEnv 0 (nm, funcInfo)
-                                                else err
-                        (Func, _)       -> err
-                        _               -> appendEnv 0 (nm, funcInfo)
+                        (FuncProto, ty, _) -> if ty == snd_ funcInfo
+                                           then appendEnv 0 (nm, funcInfo)
+                                           else err
+                        (Func, _, _)       -> err
+                        _                  -> appendEnv 0 (nm, funcInfo)
           Nothing  -> appendEnv 0 (nm, funcInfo); }
 
-funcDecl :: DeclType -> [(DeclType, Identifier)] -> Kind -> (Kind, CType)
-funcDecl ty args ki = (ki, CFun (convType ty) $ map (convType . fst) args)
+funcDecl :: DeclType -> [(DeclType, Identifier)] -> Kind -> (Kind, CType, Level)
+funcDecl ty args ki = (ki, CFun (convType ty) $ map (convType . fst) args, 0)
 
-convVar :: SourcePos -> (DeclType, DirectDecl) -> Info
-convVar p (t, d) = let ty = convType t in
-                   if containVoid ty
-                   then error $ concat [show p, ": variable contains void"]
-                   else case d of
-                          (Variable _ n)    -> (n, (Var, ty))
-                          (Sequence _ n sz) -> (n, (Var, CArray ty sz))
+convVar :: SourcePos -> Level -> (DeclType, DirectDecl) -> Info
+convVar p lev (t, d) = let ty = convType t in
+                       if containVoid ty
+                       then error $ concat [show p, ": variable contains void"]
+                       else case d of
+                              (Variable _ n)    -> (n, (Var, ty, lev))
+                              (Sequence _ n sz) -> (n, (Var, CArray ty sz, lev))
 
 convParm :: SourcePos -> (DeclType, Identifier) -> Info
 convParm p (t, n) = let ty = convType t in
                     if containVoid ty
                     then error $ concat [show p, ": parameter contains void"]
-                    else (n, (Parm, ty))
+                    else (n, (Parm, ty, 1))
 
 convType :: DeclType -> CType
 convType (DeclPointer ty) = CPointer (convType ty)
@@ -123,11 +123,11 @@ findFromJust p lev name
           (Just info) -> return info
           Nothing     -> error $ concat [show p, ": var '", name,"' is not defined."]; }
 
-findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe (Kind, CType))
+findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe (Kind, CType, Level))
 findAtTheLevel lev name = liftM (\e -> M.lookup lev e >>= lookup name) get
 
 getType :: Info -> CType
-getType = snd . snd
+getType = snd_ . snd
 
 getRetType :: Info -> Maybe CType
 getRetType i = case getType i of
@@ -139,3 +139,12 @@ containVoid (CVoid)       = True
 containVoid (CArray ty _) = containVoid ty
 containVoid (CPointer ty) = containVoid ty
 containVoid _             = False
+
+fst_ :: (a, b, c) -> a
+fst_ (a, b, c) = a
+
+snd_ :: (a, b, c) -> b
+snd_ (a, b, c) = b
+
+trd_ :: (a, b, c) -> c
+trd_ (a, b, c) = c
