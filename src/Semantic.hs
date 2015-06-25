@@ -4,19 +4,19 @@ import qualified Data.Map as M
 import Text.Parsec.Pos
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Writer
 import Control.Monad.State.Strict
 
 import AST
 import Environment
 import AnalyzedAST
 
-semanticAnalyze :: Program -> A_Program
-semanticAnalyze prog = evalState body M.empty
+semanticAnalyze :: Program -> (A_Program, [String])
+semanticAnalyze prog = runEnv body
     where
       body = do collectGDecl prog
                 ret <- analyze prog
                 typeCheck ret >> return ret
-
 
 {- analyze**
 
@@ -31,17 +31,17 @@ analyzeEDecl (Decl p l)              = return $ (map (A_Decl . convVar p) l)
 analyzeEDecl (FuncPrototype _ _ _ _) = return []
 analyzeEDecl (FuncDef p  _ name args stmt)
     = do {
-        let { parms = map convParm args; };
-        a_stmt <- withEnv 1 (appendWithDupCheck p 1 parms)
+        let { parms = map (convParm p) args; };
+        a_stmt <- withEnv 1 (mapM_ (appendWithDupCheck p 1) parms)
                   (analyzeStmt 2 stmt);
-        func   <- find p 0 name;
+        func   <- findFromJust p 0 name;
         return $ [A_Func p func parms a_stmt]; }
 
 analyzeStmt :: Level -> Stmt -> StateEnv A_Stmt
 analyzeStmt lev (CompoundStmt _ s)  = withEnv (lev+1) (return ())
                                       (liftM A_CompoundStmt (mapM (analyzeStmt $ lev+1) s))
 analyzeStmt lev (DeclStmt p l)      = let info = (map (convVar p) l)
-                                      in appendWithDupCheck p lev info
+                                      in mapM_ (appendWithDupCheck p lev) info
                                              >> (return $ A_DeclStmt info)
 analyzeStmt _   (EmptyStmt _)       = return A_EmptyStmt
 analyzeStmt lev (ExprStmt _ e)      = liftM A_ExprStmt (analyzeExpr lev e)
@@ -71,11 +71,11 @@ analyzeExpr lev (UnaryPrim p op e)
 analyzeExpr lev (BinaryPrim p op e1 e2)
     = liftM2 (A_BinaryPrim p op) (analyzeExpr lev e1) (analyzeExpr lev e2)
 analyzeExpr lev (ApplyFunc p nm args)
-    = liftM2 (A_ApplyFunc p) (find p lev nm) (mapM (analyzeExpr lev) args)
+    = liftM2 (A_ApplyFunc p) (findFromJust p lev nm) (mapM (analyzeExpr lev) args)
 analyzeExpr lev (MultiExpr p es) = liftM A_MultiExpr (mapM (analyzeExpr lev) es)
 analyzeExpr lev (Constant p n)   = return $ A_Constant n
 analyzeExpr lev (IdentExpr p n)
-    = do info <- find p lev n
+    = do info <- findFromJust p lev n
          case info of
            (_, (Func, _))      -> error $ concat [show p, ": you cannot refer to func ", n]
            (_, (FuncProto, _)) -> error $ concat [show p, ": you cannot refer to func ", n]
@@ -135,7 +135,12 @@ exprTypeCheck (A_AssignExpr p e1 e2)
 exprTypeCheck (A_UnaryPrim p op e)
     = case op of
         "&" -> checkAddressReferForm p e >> unaryTypeCheck p op e CInt (CPointer CInt)
-        "*" -> unaryTypeCheck p op e (CPointer CInt) CInt
+        "*" -> do {
+                 ty <- exprTypeCheck e;
+                 case ty of
+                   (CPointer ty') -> return ty'
+                   _              -> error $ concat [show p,  " : operand of ", op,
+                                                     " must be 'CPointer (any)'"]; }
 exprTypeCheck (A_BinaryPrim p op e1 e2)
     | op `elem` ["&&", "||", "*", "/"]
         = do {

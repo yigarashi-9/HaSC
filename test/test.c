@@ -1,12 +1,11 @@
-int a;
-
-int f(int *b, int c){
-  return 1;
+int a, *b;
+int f(int a){
+  int b;
+  b = 2;
+  return b;
 }
 
 int main(){
-  int a[10];
-  int *b, c;
-  *(b + c) = a[1];
-  b = &c;
+  int f;
+  return 0;
 }

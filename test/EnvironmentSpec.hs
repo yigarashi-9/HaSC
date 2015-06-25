@@ -2,22 +2,24 @@ module EnvironmentSpec where
 
 import Text.Parsec.Pos
 import Test.Hspec
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.List hiding(find)
 import qualified Data.Map as M
 import Control.Exception
+import Control.Monad.Writer
 
 import AST
 import Environment
 
 getEnvEmpty :: StateEnv a -> Env
-getEnvEmpty s = M.map sort $ execState s M.empty
+getEnvEmpty s = M.map sort $ fst (runWriter $ execStateT s M.empty)
 
 runWithEnv :: StateEnv a -> a
-runWithEnv s = evalState s $ M.fromList [(0, [("a", (Var, CInt)),
-                                              ("b", (Func, CFun CInt [CPointer CInt]))]),
-                                         (1, [("c", (Parm, CPointer CInt))]),
-                                         (2, [("d", (Var, CInt))])]
+runWithEnv s = fst (runWriter (evalStateT s $ M.fromList
+                                  [(0, [("a", (Var, CInt)),
+                                        ("b", (Func, CFun CInt [CPointer CInt]))]),
+                                   (1, [("c", (Parm, CPointer CInt))]),
+                                   (2, [("d", (Var, CInt))])]))
 
 u :: SourcePos
 u = newPos "test" 0 0
@@ -49,7 +51,7 @@ spec = do
              M.fromList [(0, [("a", (Func, CFun CInt []))])]
 
     it "find declaration" $ do
-      (runWithEnv $ find u 2 "d") `shouldBe` (Var, CInt)
-      (runWithEnv $ find u 2 "c") `shouldBe` (Parm, CPointer CInt)
-      (runWithEnv $ find u 1 "b") `shouldBe` (Func, CFun CInt [CPointer CInt])
+      (runWithEnv $ find u 2 "d") `shouldBe` ("d", (Var, CInt))
+      (runWithEnv $ find u 2 "c") `shouldBe` ("c", (Parm, CPointer CInt))
+      (runWithEnv $ find u 1 "b") `shouldBe` ("b", (Func, CFun CInt [CPointer CInt]))
       evaluate (runWithEnv $ find u 1 "e") `shouldThrow` anyException
