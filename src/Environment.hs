@@ -15,9 +15,11 @@ runEnv :: StateEnv a -> (a, [String])
 runEnv s = runWriter (evalStateT s M.empty)
 
 
-type Env   = M.Map Level [Info]
+type Env   = M.Map Level [(Identifier, ObjInfo)]
 type Level = Int
-type Info  = (Identifier, (Kind, CType, Level))
+data ObjInfo  = ObjInfo { kind :: Kind, ctype :: CType, level :: Level}
+                deriving(Eq, Show)
+
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
 data CType = CInt
            | CVoid
@@ -27,77 +29,91 @@ data CType = CInt
            | CFun     CType [CType]
            deriving(Show, Eq, Ord)
 
+global_lev :: Level
+global_lev = 0
+
+param_lev :: Level
+param_lev = 1
+
+func_lev :: Level
+func_lev = 2
 
 -- グローバルな宣言だけを集める
 collectGDecl :: Program -> StateEnv ()
 collectGDecl = mapM_ collectEdecl
 
 collectEdecl :: EDecl -> StateEnv ()
-collectEdecl (Decl p l) = mapM_ (appendEnv 0) (map (convVar p 0) l)
+collectEdecl (Decl p l) = mapM_ (addEnv global_lev) (map (convVar p global_lev) l)
 collectEdecl (FuncPrototype p ty nm args)
     = do {
         let { funcInfo = funcDecl ty args FuncProto } ;
-        info <- findAtTheLevel 0 nm;
+        info <- findAtTheLevel global_lev nm;
         case info of
           (Just i) -> if i == funcInfo
                       then return ()
                       else error $ concat [show p,
                                            ": invalid prototype decralation about ", nm]
-          Nothing  -> appendEnv 0 (nm, funcInfo); }
-collectEdecl (FuncDef p ty nm args stmt)
+          Nothing  -> addEnv global_lev (nm, funcInfo); }
+collectEdecl (FuncDef p dcl_ty name args stmt)
     = do {
-        let { funcInfo = funcDecl ty args Func;
-              err      = error $ concat [show p, ": invalid decralation - ", nm]; };
-        info <- findAtTheLevel 0 nm;
-        case info of
-          (Just i) -> case i of
-                        (FuncProto, ty, _) -> if ty == snd_ funcInfo
-                                           then appendEnv 0 (nm, funcInfo)
-                                           else err
-                        (Func, _, _)       -> err
-                        _                  -> appendEnv 0 (nm, funcInfo)
-          Nothing  -> appendEnv 0 (nm, funcInfo); }
+        let { funcInfo = funcDecl dcl_ty args Func;
+              err      = error $ concat [show p, ": invalid decralation - ", name]; };
+        maybeInfo <- findAtTheLevel global_lev name;
+        case maybeInfo of
+          (Just info) -> case info of
+                           (ObjInfo FuncProto ty _)
+                               -> if ty == ctype funcInfo
+                                  then addEnv global_lev (name, funcInfo)
+                                  else err
+                           (ObjInfo Func _ _) -> err
+                           _                  -> addEnv global_lev (name, funcInfo)
+          Nothing  -> addEnv global_lev (name, funcInfo); }
 
-funcDecl :: DeclType -> [(DeclType, Identifier)] -> Kind -> (Kind, CType, Level)
-funcDecl ty args ki = (ki, CFun (convType ty) $ map (convType . fst) args, 0)
+funcDecl :: DeclType -> [(DeclType, Identifier)] -> Kind -> ObjInfo
+funcDecl ty args kind = ObjInfo kind (CFun retTy argsTy) global_lev
+    where retTy  = convType ty
+          argsTy = map (convType . fst) args
 
-convVar :: SourcePos -> Level -> (DeclType, DirectDecl) -> Info
-convVar p lev (t, d) = let ty = convType t in
-                       if containVoid ty
-                       then error $ concat [show p, ": variable contains void"]
-                       else case d of
-                              (Variable _ n)    -> (n, (Var, ty, lev))
-                              (Sequence _ n sz) -> (n, (Var, CArray ty sz, lev))
+convVar :: SourcePos -> Level -> (DeclType, DirectDecl) -> (Identifier, ObjInfo)
+convVar p lev (dcl_ty, dcl)
+    = let ty = convType dcl_ty in
+      if containVoid ty
+      then error $ concat [show p, ": variable contains void"]
+      else case dcl of
+             (Variable _ name)      -> (name, ObjInfo Var ty lev)
+             (Sequence _ name size) -> (name, ObjInfo Var (CArray ty size) lev)
 
-convParm :: SourcePos -> (DeclType, Identifier) -> Info
-convParm p (t, n) = let ty = convType t in
-                    if containVoid ty
-                    then error $ concat [show p, ": parameter contains void"]
-                    else (n, (Parm, ty, 1))
+convParm :: SourcePos -> (DeclType, Identifier) -> (Identifier, ObjInfo)
+convParm p (dcl_ty, name)
+    = let ty = convType dcl_ty in
+      if containVoid ty
+      then error $ concat [show p, ": parameter contains void"]
+      else (name, ObjInfo Parm ty param_lev)
 
 convType :: DeclType -> CType
 convType (DeclPointer ty) = CPointer (convType ty)
 convType (DeclInt)        = CInt
 convType (DeclVoid)       = CVoid
 
-appendEnv :: Level -> Info -> StateEnv ()
-appendEnv lev info = liftM (M.insertWith (++) lev [info]) get >>= put
+addEnv :: Level -> (Identifier, ObjInfo) -> StateEnv ()
+addEnv lev info_entry = liftM (M.insertWith (++) lev [info_entry]) get >>= put
 
-appendWithDupCheck :: SourcePos -> Level -> Info -> StateEnv ()
-appendWithDupCheck p lev info
+extendEnv :: SourcePos -> Level -> (Identifier, ObjInfo) -> StateEnv ()
+extendEnv p lev (name, info)
     = do {
-        let { name = fst info; };
-        i <- findAtTheLevel lev name;
-        case i of
+        dupInfo <- findAtTheLevel lev name;
+        case dupInfo of
           (Just _) -> error $ concat [show p, ": duplicate variable decralations ", name]
-          Nothing  -> find (lev-1) name >>= tellShadowing p name >>  appendEnv lev info; }
+          Nothing  -> tellShadowing p name lev >> addEnv lev (name, info); }
 
-tellShadowing :: SourcePos -> Identifier -> Maybe Info -> StateEnv ()
-tellShadowing p name i
-    = case i of
-        (Just _) -> tell [(concat ["Warning ", show p, " : ", name,
-                                  " shadows same name variables."])]
-        Nothing  -> return ()
+tellShadowing :: SourcePos -> Identifier -> Level -> StateEnv ()
+tellShadowing p name baseLev
+    = do {
+        hiddenInfo <- find (baseLev-1) name;
+        case hiddenInfo of
+          (Just _) -> tell [(concat ["Warning ", show p, " : ", name,
+                                     " shadows same name variables."])]
+          Nothing  -> return (); }
 
 deleteLevel :: Level -> StateEnv ()
 deleteLevel lev = (liftM (M.delete lev) get) >>= put
@@ -105,46 +121,27 @@ deleteLevel lev = (liftM (M.delete lev) get) >>= put
 withEnv :: Level -> StateEnv () -> StateEnv a -> StateEnv a
 withEnv lev mkenv body = mkenv >> body <* deleteLevel lev
 
-find :: Level -> Identifier -> StateEnv (Maybe Info)
-find lev name = do
-  if lev <= (-1)
-  then return Nothing
-  else do
-    env <- get
-    case (M.lookup lev env >>= lookup name) of
-      (Just info) -> return $ Just (name, info)
-      Nothing     -> find (lev-1) name
+find :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
+find lev name = if lev <= -1 then return Nothing
+                else do {
+                       env <- get;
+                       case (M.lookup lev env >>= lookup name) of
+                         (Just info) -> return $ Just info
+                         Nothing     -> find (lev-1) name; }
 
-findFromJust :: SourcePos -> Level -> Identifier -> StateEnv Info
+findFromJust :: SourcePos -> Level -> Identifier -> StateEnv ObjInfo
 findFromJust p lev name
     = do {
-        i <- find lev name;
-        case i of
+        maybeInfo <- find lev name;
+        case maybeInfo of
           (Just info) -> return info
           Nothing     -> error $ concat [show p, ": var '", name,"' is not defined."]; }
 
-findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe (Kind, CType, Level))
+findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
 findAtTheLevel lev name = liftM (\e -> M.lookup lev e >>= lookup name) get
-
-getType :: Info -> CType
-getType = snd_ . snd
-
-getRetType :: Info -> Maybe CType
-getRetType i = case getType i of
-                 (CFun ret _) -> Just ret
-                 _            -> Nothing
 
 containVoid :: CType -> Bool
 containVoid (CVoid)       = True
 containVoid (CArray ty _) = containVoid ty
 containVoid (CPointer ty) = containVoid ty
 containVoid _             = False
-
-fst_ :: (a, b, c) -> a
-fst_ (a, b, c) = a
-
-snd_ :: (a, b, c) -> b
-snd_ (a, b, c) = b
-
-trd_ :: (a, b, c) -> c
-trd_ (a, b, c) = c
