@@ -15,11 +15,12 @@ runEnv :: StateEnv a -> Env -> (a, [String])
 runEnv s env = runWriter (evalStateT s env)
 
 type Env   = M.Map Level [(Identifier, ObjInfo)]
-type Level = Int
+
 data ObjInfo  = ObjInfo { kind :: Kind, ctype :: CType, level :: Level}
                 deriving(Eq, Show, Ord)
 
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
+
 data CType = CInt
            | CVoid
            | CNone
@@ -27,6 +28,9 @@ data CType = CInt
            | CArray   CType Integer
            | CFun     CType [CType]
            deriving(Show, Eq, Ord)
+
+type Level = Int
+
 
 global_lev :: Level
 global_lev = 0
@@ -42,10 +46,10 @@ collectGDecl :: Program -> StateEnv ()
 collectGDecl = mapM_ collectEdecl
 
 collectEdecl :: EDecl -> StateEnv ()
-collectEdecl (Decl p l) = mapM_ (addEnv global_lev) (map (convVar p global_lev) l)
+collectEdecl (Decl p l) = mapM_ (addEnv global_lev) (map (makeVarInfo p global_lev) l)
 collectEdecl (FuncPrototype p ty nm args)
     = do {
-        let { funcInfo = funcDecl ty args FuncProto } ;
+        let { funcInfo = makeFuncInfo ty args FuncProto } ;
         info <- findAtTheLevel global_lev nm;
         case info of
           (Just i) -> if i == funcInfo
@@ -55,7 +59,7 @@ collectEdecl (FuncPrototype p ty nm args)
           Nothing  -> addEnv global_lev (nm, funcInfo); }
 collectEdecl (FuncDef p dcl_ty name args stmt)
     = do {
-        let { funcInfo = funcDecl dcl_ty args Func;
+        let { funcInfo = makeFuncInfo dcl_ty args Func;
               err      = error $ concat [show p, ": invalid decralation - ", name]; };
         maybeInfo <- findAtTheLevel global_lev name;
         case maybeInfo of
@@ -68,13 +72,13 @@ collectEdecl (FuncDef p dcl_ty name args stmt)
                            _                  -> addEnv global_lev (name, funcInfo)
           Nothing  -> addEnv global_lev (name, funcInfo); }
 
-funcDecl :: DeclType -> [(DeclType, Identifier)] -> Kind -> ObjInfo
-funcDecl ty args kind = ObjInfo kind (CFun retTy argsTy) global_lev
+makeFuncInfo :: DeclType -> [(DeclType, Identifier)] -> Kind -> ObjInfo
+makeFuncInfo ty args kind = ObjInfo kind (CFun retTy argsTy) global_lev
     where retTy  = convType ty
           argsTy = map (convType . fst) args
 
-convVar :: SourcePos -> Level -> (DeclType, DirectDecl) -> (Identifier, ObjInfo)
-convVar p lev (dcl_ty, dcl)
+makeVarInfo :: SourcePos -> Level -> (DeclType, DirectDecl) -> (Identifier, ObjInfo)
+makeVarInfo p lev (dcl_ty, dcl)
     = let ty = convType dcl_ty in
       if containVoid ty
       then error $ concat [show p, ": variable contains void"]
@@ -82,8 +86,8 @@ convVar p lev (dcl_ty, dcl)
              (Variable _ name)      -> (name, ObjInfo Var ty lev)
              (Sequence _ name size) -> (name, ObjInfo Var (CArray ty size) lev)
 
-convParm :: SourcePos -> (DeclType, Identifier) -> (Identifier, ObjInfo)
-convParm p (dcl_ty, name)
+makeParmInfo :: SourcePos -> (DeclType, Identifier) -> (Identifier, ObjInfo)
+makeParmInfo p (dcl_ty, name)
     = let ty = convType dcl_ty in
       if containVoid ty
       then error $ concat [show p, ": parameter contains void"]

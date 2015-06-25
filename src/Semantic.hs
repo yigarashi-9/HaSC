@@ -27,11 +27,11 @@ analyze prog = liftM concat (mapM analyzeEDecl prog)
 
 analyzeEDecl :: EDecl -> StateEnv [A_EDecl]
 analyzeEDecl (Decl p dcl_ty)
-    = return $ map (A_Decl . convVar p global_lev) dcl_ty
+    = return $ map (A_Decl . makeVarInfo p global_lev) dcl_ty
 analyzeEDecl (FuncPrototype _ _ _ _) = return []
 analyzeEDecl (FuncDef p _ name args stmt)
     = do {
-        let { parms = map (convParm p) args; };
+        let { parms = map (makeParmInfo p) args; };
         a_stmt <- withEnv param_lev
                           (mapM_ (extendEnv p param_lev) parms)
                           (analyzeStmt func_lev stmt);
@@ -44,7 +44,7 @@ analyzeStmt lev (CompoundStmt _ stmts)
               (return ())
               (liftM A_CompoundStmt (mapM (analyzeStmt $ lev+1) stmts))
 analyzeStmt lev (DeclStmt p dcls)
-    = let info = map (convVar p lev) dcls
+    = let info = map (makeVarInfo p lev) dcls
       in mapM_ (extendEnv p lev) info >> (return $ A_DeclStmt info)
 analyzeStmt _   (EmptyStmt _)       = return A_EmptyStmt
 analyzeStmt lev (ExprStmt _ e)      = liftM A_ExprStmt (analyzeExpr lev e)
