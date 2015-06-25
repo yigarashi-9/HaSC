@@ -19,7 +19,7 @@ u = newPos "test" 0 0
 run :: String -> IO A_Program
 run test = do
   ast <- parseProgram ("SemanticTest/" ++ test)
-  return $ fst (runEnv (analyze ast))
+  return $ fst (runEnv (analyze ast) M.empty)
 
 spec :: Spec
 spec = do

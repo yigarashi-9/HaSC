@@ -11,14 +11,13 @@ import AST
 
 type StateEnv = StateT Env (Writer [String])
 
-runEnv :: StateEnv a -> (a, [String])
-runEnv s = runWriter (evalStateT s M.empty)
-
+runEnv :: StateEnv a -> Env -> (a, [String])
+runEnv s env = runWriter (evalStateT s env)
 
 type Env   = M.Map Level [(Identifier, ObjInfo)]
 type Level = Int
 data ObjInfo  = ObjInfo { kind :: Kind, ctype :: CType, level :: Level}
-                deriving(Eq, Show)
+                deriving(Eq, Show, Ord)
 
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
 data CType = CInt
