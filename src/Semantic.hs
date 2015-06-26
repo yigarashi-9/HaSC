@@ -194,7 +194,7 @@ exprTypeCheck (A_IdentExpr (name, info))  = return $ ctype info
 
 addrTypeChcek :: SourcePos -> A_Expr -> StateEnv CType
 addrTypeChcek p e = do
-  checkAssignForm p e
+  checkAddressReferForm p e
   ty <- exprTypeCheck e
   if ty == CInt then return (CPointer CInt) else unaryError p "&" CInt ty
 

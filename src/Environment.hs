@@ -43,7 +43,7 @@ collectGlobal = mapM_ collectEdecl
 {- EDeclから情報を抽出する。
    不正な宣言はここで検出する -}
 collectEdecl :: EDecl -> StateEnv ()
-collectEdecl (Decl p l) = mapM_ (addEnv global_lev) (map (makeVarInfo p global_lev) l)
+collectEdecl (Decl p l) = mapM_ (extendEnv p global_lev) (map (makeVarInfo p global_lev) l)
 collectEdecl (FuncPrototype p ty nm args)
     = do {
         let { funcInfo = makeFuncInfo ty args FuncProto } ;

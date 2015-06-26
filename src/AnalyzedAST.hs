@@ -16,7 +16,6 @@ type Level = Int
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
 data CType = CInt
            | CVoid
-           | CNone
            | CPointer CType
            | CArray   CType Integer
            | CFun     CType [CType]
