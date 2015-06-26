@@ -18,6 +18,9 @@ type Env      = M.Map Level [(Identifier, ObjInfo)]
 runEnv :: StateEnv a -> Env -> (a, [String])
 runEnv s env = runWriter (evalStateT s env)
 
+initialEnv :: Env
+initialEnv = M.fromList [(0, [("print", (ObjInfo Func (CFun CVoid [CInt]) 0))])]
+
 
 {- レベルを表す数値 -}
 global_lev :: Level

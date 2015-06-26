@@ -13,7 +13,7 @@ import AnalyzedAST
 import ErrorMsg
 
 semanticAnalyze :: Program -> (A_Program, [String])
-semanticAnalyze prog = runEnv body M.empty
+semanticAnalyze prog = runEnv body initialEnv
     where body = do collectGlobal prog
                     ret <- analyze prog
                     typeCheck ret >> return ret
