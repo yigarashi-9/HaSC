@@ -20,7 +20,7 @@ data CType = CInt
            | CPointer CType
            | CArray   CType Integer
            | CFun     CType [CType]
-           deriving(Eq, Ord)
+           deriving(Ord)
 
 instance Show CType where
     show (CInt)           = "int"
@@ -31,6 +31,18 @@ instance Show CType where
     show (CFun ty args)   = concat ["(", concat $ intersperse ", " (map show args),
                                     ") -> ", show ty]
     show _                = "*** complex type... cannot show ***"
+
+instance Eq CType where
+    (==) CInt             CInt             = True
+    (==) CVoid            CVoid            = True
+    (==) CNone            CNone            = True
+    (==) (CPointer ty1)   (CPointer ty2)   = ty1 == ty2
+    (==) (CArray ty1 _)   (CArray ty2 _)   = ty1 == ty2
+    (==) (CFun ty1 args1) (CFun ty2 args2) = (ty1 == ty2) && (args1 == args2)
+    (==) (CArray ty1 _)   (CPointer ty2)   = ty1 == ty2
+    (==) (CPointer ty1)   (CArray ty2 _)   = ty1 == ty2
+    (==) _ _ = False
+
 
 convType :: DeclType -> CType
 convType (DeclPointer ty) = CPointer (convType ty)

@@ -29,8 +29,10 @@ global_lev = 0
 param_lev :: Level
 param_lev = 1
 
+{- Compound Statement は中でレベルが一つ下がるので
+   -1 した値を与えておく -}
 func_lev :: Level
-func_lev = 2
+func_lev = 1
 
 
 {- グローバルレベルの情報を集めた状態を返す -}
