@@ -97,51 +97,60 @@ typeCheck :: A_Program -> StateEnv ()
 typeCheck = mapM_ declTypeCheck
 
 declTypeCheck :: A_EDecl -> StateEnv ()
-declTypeCheck (A_Decl _) = wellTyped
+declTypeCheck (A_Decl _) = return ()
 declTypeCheck (A_Func p (name, info) args body)
     = case getRetType info of
-        (Just ty) -> stmtTypeCheck (name, ty) body
+        (Just ty) -> do retTy <- stmtTypeCheck (name, ty) body
+                        when (ty /= retTy) (invalidRetTypeError p name)
         Nothing   -> invalidRetTypeError p name
     where
       getRetType info = case ctype info of
                           (CFun retTy _) -> Just retTy
                           _              -> Nothing
 
-stmtTypeCheck :: (Identifier, CType) -> A_Stmt -> StateEnv ()
-stmtTypeCheck (name, retTy) = stmtTypeCheck'
+stmtTypeCheck :: (Identifier, CType) -> A_Stmt -> StateEnv CType
+stmtTypeCheck info@(name, retTy) = stmtTypeCheck'
     where
-      stmtTypeCheck' :: A_Stmt -> StateEnv ()
+      stmtTypeCheck' :: A_Stmt -> StateEnv CType
       stmtTypeCheck' (A_EmptyStmt)        = wellTyped
       stmtTypeCheck' (A_ExprStmt e)       = exprTypeCheck e >> wellTyped
       stmtTypeCheck' (A_DeclStmt l)       = wellTyped
-      stmtTypeCheck' (A_CompoundStmt s)   = mapM_ stmtTypeCheck' s
-      stmtTypeCheck' (A_IfStmt p c tr fl) = ifTypeCheck p c tr fl
-      stmtTypeCheck' (A_WhileStmt p c bd) = whileTypeCheck p c bd
-      stmtTypeCheck' (A_ReturnStmt p e)   = returnTypeCheck p name retTy e
+      stmtTypeCheck' (A_CompoundStmt s)   = foldCompoundStmt info CVoid s
+      stmtTypeCheck' (A_IfStmt p c tr fl) = ifTypeCheck p info c tr fl
+      stmtTypeCheck' (A_WhileStmt p c bd) = whileTypeCheck p info c bd
+      stmtTypeCheck' (A_ReturnStmt p e)   = returnTypeCheck p info e
       stmtTypeCheck' (A_RetVoidStmt p)
-          = when (retTy /= CVoid) (retTypeError p name CVoid retTy)
+          = when (retTy /= CVoid) (retTypeError p name retTy CVoid)
+            >> wellTyped
 
-ifTypeCheck :: SourcePos -> A_Expr -> A_Stmt -> A_Stmt -> StateEnv ()
-ifTypeCheck p cond tr fls
+foldCompoundStmt :: (Identifier, CType) -> CType -> [A_Stmt] -> StateEnv CType
+foldCompoundStmt info = foldM f
+    where
+      f acc stmt = do stmtTy <- stmtTypeCheck info stmt
+                      return $ synType stmtTy acc
+
+ifTypeCheck :: SourcePos -> (Identifier, CType) -> A_Expr -> A_Stmt -> A_Stmt
+            -> StateEnv CType
+ifTypeCheck p info cond tr fls
     = do condTy <- exprTypeCheck cond
          if condTy == CInt
-         then wellTyped
+         then liftM2 synType (stmtTypeCheck info tr) (stmtTypeCheck info fls)
          else condError p condTy
 
-whileTypeCheck :: SourcePos -> A_Expr -> A_Stmt -> StateEnv ()
-whileTypeCheck p cond body
+whileTypeCheck :: SourcePos -> (Identifier, CType) -> A_Expr -> A_Stmt
+               -> StateEnv CType
+whileTypeCheck p info cond body
     = do condTy <- exprTypeCheck cond
          if condTy == CInt
-         then wellTyped
+         then stmtTypeCheck info body
          else condError p condTy
 
-returnTypeCheck :: SourcePos -> Identifier -> CType -> A_Expr -> StateEnv ()
-returnTypeCheck p name retTy e
+returnTypeCheck :: SourcePos -> (Identifier, CType) -> A_Expr -> StateEnv CType
+returnTypeCheck p (name, retTy) e
     = do ty <- exprTypeCheck e
          if retTy == ty
-         then wellTyped
+         then return ty
          else retTypeError p name retTy ty
-
 
 
 exprTypeCheck :: A_Expr -> StateEnv CType
@@ -208,20 +217,20 @@ pointerTypeCheck p e = do
 {- Utility -}
 
 checkAddressReferForm :: SourcePos -> A_Expr -> StateEnv ()
-checkAddressReferForm _ (A_IdentExpr _) = wellTyped
+checkAddressReferForm _ (A_IdentExpr _) = return ()
 checkAddressReferForm p _ = addrFormError p
 
-checkAssignForm :: SourcePos -> A_Expr -> StateEnv()
+checkAssignForm :: SourcePos -> A_Expr -> StateEnv ()
 checkAssignForm p (A_IdentExpr (name, ObjInfo kind ty _))
     = case (kind, ty) of
         (Var, (CArray _ _))  -> assignError p
-        (Var, _)             -> wellTyped
+        (Var, _)             -> return ()
         (Parm, (CArray _ _)) -> assignError p
-        (Parm, _)            -> wellTyped
+        (Parm, _)            -> return ()
         (Func, _)            -> assignError p
         (FuncProto, _)       -> assignError p
-checkAssignForm p (A_UnaryPrim _ "*" _) = wellTyped
+checkAssignForm p (A_UnaryPrim _ "*" _) = return ()
 checkAssignForm p _ = assignError p
 
-wellTyped :: StateEnv ()
-wellTyped = return ()
+wellTyped :: StateEnv CType
+wellTyped = return CVoid

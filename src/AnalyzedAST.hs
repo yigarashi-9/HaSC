@@ -14,8 +14,8 @@ data ObjInfo  = ObjInfo { kind  :: Kind,
 
 type Level = Int
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
-data CType = CInt
-           | CVoid
+data CType = CVoid
+           | CInt
            | CPointer CType
            | CArray   CType Integer
            | CFun     CType [CType]
@@ -24,7 +24,6 @@ data CType = CInt
 instance Show CType where
     show (CInt)           = "int"
     show (CVoid)          = "void"
-    show (CNone)          = ""
     show (CPointer CInt)  = "int *"
     show (CArray ty size) = show ty ++ "[" ++ show size ++ "]"
     show (CFun ty args)   = concat ["(", concat $ intersperse ", " (map show args),
@@ -34,7 +33,6 @@ instance Show CType where
 instance Eq CType where
     (==) CInt             CInt             = True
     (==) CVoid            CVoid            = True
-    (==) CNone            CNone            = True
     (==) (CPointer ty1)   (CPointer ty2)   = ty1 == ty2
     (==) (CArray ty1 _)   (CArray ty2 _)   = ty1 == ty2
     (==) (CFun ty1 args1) (CFun ty2 args2) = (ty1 == ty2) && (args1 == args2)
@@ -54,7 +52,9 @@ containVoid (CArray ty _) = containVoid ty
 containVoid (CPointer ty) = containVoid ty
 containVoid _             = False
 
-
+-- void かそうでないかが重要なので、max を使って型を合成する
+synType :: CType -> CType -> CType
+synType = max
 
 {- 収集したオブジェクト情報を埋め込むための新たな木。
    A_ は Analyzed の頭文字。
