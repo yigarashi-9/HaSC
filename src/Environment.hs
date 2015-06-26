@@ -78,11 +78,6 @@ makeParmInfo p (dcl_ty, name)
       then voidError p
       else (name, ObjInfo Parm ty param_lev)
 
-convType :: DeclType -> CType
-convType (DeclPointer ty) = CPointer (convType ty)
-convType (DeclInt)        = CInt
-convType (DeclVoid)       = CVoid
-
 addEnv :: Level -> (Identifier, ObjInfo) -> StateEnv ()
 addEnv lev info_entry = liftM (M.insertWith (++) lev [info_entry]) get >>= put
 
@@ -126,9 +121,3 @@ findFromJust p lev name
 
 findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
 findAtTheLevel lev name = liftM (\e -> M.lookup lev e >>= lookup name) get
-
-containVoid :: CType -> Bool
-containVoid (CVoid)       = True
-containVoid (CArray ty _) = containVoid ty
-containVoid (CPointer ty) = containVoid ty
-containVoid _             = False

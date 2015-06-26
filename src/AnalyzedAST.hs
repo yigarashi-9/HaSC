@@ -1,13 +1,19 @@
 module AnalyzedAST where
 
+import AST
 import Text.Parsec.Pos
 import Data.List
 
-data ObjInfo  = ObjInfo { kind :: Kind, ctype :: CType, level :: Level}
-                deriving(Eq, Show, Ord)
 
+{- オブジェクトの情報を収集するためのデータ型 -}
+
+data ObjInfo  = ObjInfo { kind  :: Kind,
+                          ctype :: CType,
+                          level :: Level
+                        }deriving(Eq, Show, Ord)
+
+type Level = Int
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
-
 data CType = CInt
            | CVoid
            | CNone
@@ -26,11 +32,25 @@ instance Show CType where
                                     ") -> ", show ty]
     show _                = "*** complex type... cannot show ***"
 
-type Level = Int
+convType :: DeclType -> CType
+convType (DeclPointer ty) = CPointer (convType ty)
+convType (DeclInt)        = CInt
+convType (DeclVoid)       = CVoid
 
+containVoid :: CType -> Bool
+containVoid (CVoid)       = True
+containVoid (CArray ty _) = containVoid ty
+containVoid (CPointer ty) = containVoid ty
+containVoid _             = False
+
+
+
+{- 収集したオブジェクト情報を埋め込むための新たな木。
+   A_ は Analyzed の頭文字。
+   SourcePos は必要になるところだけに埋め込んでいる。 -}
 
 type A_Program = [A_EDecl]
-type A_Idnentifier = (String, ObjInfo)
+type A_Idnentifier = (Identifier, ObjInfo)
 
 data A_EDecl = A_Decl A_Idnentifier
              | A_Func SourcePos A_Idnentifier [A_Idnentifier] A_Stmt
