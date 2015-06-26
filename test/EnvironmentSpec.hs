@@ -41,15 +41,15 @@ spec :: Spec
 spec = do
   describe "Environment" $ do
     it "collect global decralations" $ do
-      (getEnvEmpty . collectGDecl) testcase1 `shouldBe`
+      (getEnvEmpty . collectGlobal) testcase1 `shouldBe`
              M.fromList [(0, [("a", (ObjInfo Var CInt 0)),
                               ("b", (ObjInfo Var (CPointer CInt) 0)),
                               ("c", (ObjInfo Var (CArray CInt 10) 0)),
                               ("d", (ObjInfo Var (CArray (CPointer CInt) 20) 0))])]
-      (getEnvEmpty . collectGDecl) testcase2 `shouldBe`
+      (getEnvEmpty . collectGlobal) testcase2 `shouldBe`
              M.fromList [(0, [("a", (ObjInfo FuncProto
                                              (CFun CInt [CInt, CPointer CInt]) 0))])]
-      (getEnvEmpty . collectGDecl) testcase3 `shouldBe`
+      (getEnvEmpty . collectGlobal) testcase3 `shouldBe`
              M.fromList [(0, [("a", (ObjInfo Func (CFun CInt []) 0))])]
 
     it "find declaration" $ do

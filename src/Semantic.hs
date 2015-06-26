@@ -14,7 +14,7 @@ import ErrorMsg
 
 semanticAnalyze :: Program -> (A_Program, [String])
 semanticAnalyze prog = runEnv body M.empty
-    where body = do collectGDecl prog
+    where body = do collectGlobal prog
                     ret <- analyze prog
                     typeCheck ret >> return ret
 
