@@ -10,6 +10,7 @@ import Control.Monad.Writer
 
 import AST
 import Environment
+import AnalyzedAST
 
 getEnvEmpty :: StateEnv a -> Env
 getEnvEmpty s = M.map sort $ fst (runWriter $ execStateT s M.empty)

@@ -28,6 +28,7 @@ library
     Semantic
     Environment
     AnalyzedAST
+    ErrorMsg
   ghc-options:   -Wall
 
 executable HaSC

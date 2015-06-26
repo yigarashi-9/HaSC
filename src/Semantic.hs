@@ -10,6 +10,7 @@ import Control.Monad.State.Strict
 import AST
 import Environment
 import AnalyzedAST
+import ErrorMsg
 
 semanticAnalyze :: Program -> (A_Program, [String])
 semanticAnalyze prog = runEnv body M.empty
@@ -85,9 +86,9 @@ analyzeExpr lev (IdentExpr p name)
         info <- findFromJust p lev name;
         case info of
           (ObjInfo Func _ _)
-              -> error $ concat [show p, ": you cannot refer to func ", name]
+              -> funcReferError p name
           (ObjInfo FuncProto _ _)
-              -> error $ concat [show p, ": you cannot refer to func ", name]
+              -> funcReferError p name
           validInfo -> return $ A_IdentExpr (name, validInfo); }
 
 
@@ -99,15 +100,15 @@ declTypeCheck :: A_EDecl -> StateEnv ()
 declTypeCheck (A_Decl _) = wellTyped
 declTypeCheck (A_Func p (name, info) args body)
     = case getRetType info of
-        (Just ty) -> stmtTypeCheck ty body
-        Nothing   -> error $ concat [show p, ": invalid function type ", name]
+        (Just ty) -> stmtTypeCheck (name, ty) body
+        Nothing   -> invalidRetTypeError p name
     where
       getRetType info = case ctype info of
                           (CFun retTy _) -> Just retTy
                           _              -> Nothing
 
-stmtTypeCheck :: CType -> A_Stmt -> StateEnv ()
-stmtTypeCheck retTy = stmtTypeCheck'
+stmtTypeCheck :: (Identifier, CType) -> A_Stmt -> StateEnv ()
+stmtTypeCheck (name, retTy) = stmtTypeCheck'
     where
       stmtTypeCheck' :: A_Stmt -> StateEnv ()
       stmtTypeCheck' (A_EmptyStmt)        = wellTyped
@@ -116,30 +117,30 @@ stmtTypeCheck retTy = stmtTypeCheck'
       stmtTypeCheck' (A_CompoundStmt s)   = mapM_ stmtTypeCheck' s
       stmtTypeCheck' (A_IfStmt p c tr fl) = ifTypeCheck p c tr fl
       stmtTypeCheck' (A_WhileStmt p c bd) = whileTypeCheck p c bd
-      stmtTypeCheck' (A_ReturnStmt p e)   = returnTypeCheck p retTy e
+      stmtTypeCheck' (A_ReturnStmt p e)   = returnTypeCheck p name retTy e
       stmtTypeCheck' (A_RetVoidStmt p)
-          = when (retTy /= CVoid) (error $ concat [show p, ": invalid return type"])
+          = when (retTy /= CVoid) (retTypeError p name CVoid retTy)
 
 ifTypeCheck :: SourcePos -> A_Expr -> A_Stmt -> A_Stmt -> StateEnv ()
 ifTypeCheck p cond tr fls
     = do condTy <- exprTypeCheck cond
          if condTy == CInt
          then wellTyped
-         else error $ show p ++ ": condifion of if must be Int"
+         else condError p condTy
 
 whileTypeCheck :: SourcePos -> A_Expr -> A_Stmt -> StateEnv ()
 whileTypeCheck p cond body
     = do condTy <- exprTypeCheck cond
          if condTy == CInt
          then wellTyped
-         else error $ show p ++ ": condifion of while must be Int"
+         else condError p condTy
 
-returnTypeCheck :: SourcePos -> CType -> A_Expr -> StateEnv ()
-returnTypeCheck p retTy e
+returnTypeCheck :: SourcePos -> Identifier -> CType -> A_Expr -> StateEnv ()
+returnTypeCheck p name retTy e
     = do ty <- exprTypeCheck e
          if retTy == ty
          then wellTyped
-         else error $ concat [show p, ": must return ", show retTy]
+         else retTypeError p name retTy ty
 
 
 
@@ -149,7 +150,7 @@ exprTypeCheck (A_AssignExpr p e1 e2)
         checkAssignForm p e1;
         ty1 <- exprTypeCheck e1;
         ty2 <- exprTypeCheck e2;
-        if ty1 == ty2 then return ty1 else typeDiffError p "="; }
+        if ty1 == ty2 then return ty1 else typeDiffError p "=" ty1 ty2; }
 exprTypeCheck (A_UnaryPrim p op e)
     = case op of
         "&" -> addrTypeChcek p e
@@ -161,14 +162,14 @@ exprTypeCheck (A_BinaryPrim p op e1 e2)
             ty2 <- exprTypeCheck e2;
             if ty1 == CInt && ty2 == CInt
             then return CInt
-            else typeSpecError p op CInt; }
+            else binaryTypeError p op ty1 ty2; }
     | op `elem` ["==", "!=", "<", "<=", ">", ">="]
         = do {
             ty1 <- exprTypeCheck e1;
             ty2 <- exprTypeCheck e2;
             if ty1 == ty2
             then return ty1
-            else typeDiffError p op; }
+            else typeDiffError p op ty1 ty2; }
     | op `elem` ["+", "-"]
         = do {
             ty1 <- exprTypeCheck e1;
@@ -177,15 +178,15 @@ exprTypeCheck (A_BinaryPrim p op e1 e2)
               (CInt, CInt)        -> return CInt
               (CPointer ty, CInt) -> return $ CPointer ty
               (CArray ty _, CInt) -> return $ CPointer ty
-              _                   -> error $ show p ++ ": bad pointer operands"; }
+              _                   -> invalidCalcError p op ty1 ty2; }
 exprTypeCheck (A_ApplyFunc p (name, info) args)
     = do {
         argTypes <- mapM exprTypeCheck args;
         case info of
           (ObjInfo Func (CFun ty parms) _) -> if argTypes == parms
                                               then return ty
-                                              else error $ show p ++ ": bad arguments"
-          _  -> error $ show p ++ ": '" ++ name ++ "' is not function" }
+                                              else argumentError p name
+          _  -> funcReferError p name }
 exprTypeCheck (A_MultiExpr es) = liftM last (mapM exprTypeCheck es)
 exprTypeCheck (A_Constant n)   = return CInt
 exprTypeCheck (A_IdentExpr (name, info))  = return $ ctype info
@@ -195,43 +196,32 @@ addrTypeChcek :: SourcePos -> A_Expr -> StateEnv CType
 addrTypeChcek p e = do
   checkAssignForm p e
   ty <- exprTypeCheck e
-  if ty == CInt then return (CPointer CInt) else typeSpecError p "&" CInt;
+  if ty == CInt then return (CPointer CInt) else unaryError p "&" CInt ty
 
 pointerTypeCheck :: SourcePos -> A_Expr -> StateEnv CType
 pointerTypeCheck p e = do
   ty <- exprTypeCheck e
   case ty of
     (CPointer ty') -> return ty'
-    _              -> error $ concat [show p,  " : operand of *",
-                                               " must be 'CPointer (any)'"]
+    _              -> unaryError p "*" (CPointer CInt) ty
 
 {- Utility -}
 
 checkAddressReferForm :: SourcePos -> A_Expr -> StateEnv ()
 checkAddressReferForm _ (A_IdentExpr _) = wellTyped
-checkAddressReferForm p _ = error $ concat [show p, "invalid argument of '&'"]
+checkAddressReferForm p _ = addrFormError p
 
 checkAssignForm :: SourcePos -> A_Expr -> StateEnv()
 checkAssignForm p (A_IdentExpr (name, ObjInfo kind ty _))
     = case (kind, ty) of
-        (Var, (CArray _ _))  -> error $ concat [show p, " : invalid assign"]
+        (Var, (CArray _ _))  -> assignError p
         (Var, _)             -> wellTyped
-        (Parm, (CArray _ _)) -> error $ concat [show p, " : invalid assign"]
+        (Parm, (CArray _ _)) -> assignError p
         (Parm, _)            -> wellTyped
-        (Func, _)            -> error $ concat [show p, " : invalid assign"]
-        (FuncProto, _)       -> error $ concat [show p, " : invalid assign"]
+        (Func, _)            -> assignError p
+        (FuncProto, _)       -> assignError p
 checkAssignForm p (A_UnaryPrim _ "*" _) = wellTyped
-checkAssignForm p _ = error $ concat [show p, " : invalid assign"]
-
--- 二つの引数の型が同じでなければならない場合の Type Error
-typeDiffError :: SourcePos -> String -> a
-typeDiffError p op = error $ concat [show p, ": Types of operands '",
-                                     op, "' must be same"]
-
--- 二つの引数の型がある型でなければいけない場合の Type Error
-typeSpecError :: SourcePos -> String -> CType -> a
-typeSpecError p op ty = error $ concat [show p, ": Types of operands '",
-                                       op, "' must be ", show ty]
+checkAssignForm p _ = assignError p
 
 wellTyped :: StateEnv ()
 wellTyped = return ()

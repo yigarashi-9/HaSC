@@ -1,7 +1,33 @@
 module AnalyzedAST where
 
 import Text.Parsec.Pos
-import Environment
+import Data.List
+
+data ObjInfo  = ObjInfo { kind :: Kind, ctype :: CType, level :: Level}
+                deriving(Eq, Show, Ord)
+
+data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
+
+data CType = CInt
+           | CVoid
+           | CNone
+           | CPointer CType
+           | CArray   CType Integer
+           | CFun     CType [CType]
+           deriving(Eq, Ord)
+
+instance Show CType where
+    show (CInt)           = "int"
+    show (CVoid)          = "void"
+    show (CNone)          = ""
+    show (CPointer CInt)  = "int *"
+    show (CArray ty size) = show ty ++ "[" ++ show size ++ "]"
+    show (CFun ty args)   = concat ["(", concat $ intersperse ", " (map show args),
+                                    ") -> ", show ty]
+    show _                = "*** complex type... cannot show ***"
+
+type Level = Int
+
 
 type A_Program = [A_EDecl]
 type A_Idnentifier = (String, ObjInfo)

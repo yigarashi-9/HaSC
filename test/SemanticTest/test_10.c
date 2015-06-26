@@ -5,7 +5,7 @@ void f(int a){
 int main(){
   int b;
   b = 34;
-  while(f(b)){
+  if(f(b)){
     return b;
   }else{
     return b+1;

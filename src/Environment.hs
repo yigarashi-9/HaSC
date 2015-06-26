@@ -8,6 +8,8 @@ import           Control.Monad.Writer
 import           Control.Monad.State.Strict
 
 import AST
+import AnalyzedAST
+import ErrorMsg
 
 type StateEnv = StateT Env (Writer [String])
 
@@ -15,21 +17,6 @@ runEnv :: StateEnv a -> Env -> (a, [String])
 runEnv s env = runWriter (evalStateT s env)
 
 type Env   = M.Map Level [(Identifier, ObjInfo)]
-
-data ObjInfo  = ObjInfo { kind :: Kind, ctype :: CType, level :: Level}
-                deriving(Eq, Show, Ord)
-
-data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
-
-data CType = CInt
-           | CVoid
-           | CNone
-           | CPointer CType
-           | CArray   CType Integer
-           | CFun     CType [CType]
-           deriving(Show, Eq, Ord)
-
-type Level = Int
 
 
 global_lev :: Level
@@ -54,21 +41,19 @@ collectEdecl (FuncPrototype p ty nm args)
         case info of
           (Just i) -> if i == funcInfo
                       then return ()
-                      else error $ concat [show p,
-                                           ": invalid prototype decralation about ", nm]
+                      else protoTypeError p nm
           Nothing  -> addEnv global_lev (nm, funcInfo); }
 collectEdecl (FuncDef p dcl_ty name args stmt)
     = do {
-        let { funcInfo = makeFuncInfo dcl_ty args Func;
-              err      = error $ concat [show p, ": invalid decralation - ", name]; };
+        let { funcInfo = makeFuncInfo dcl_ty args Func; };
         maybeInfo <- findAtTheLevel global_lev name;
         case maybeInfo of
           (Just info) -> case info of
                            (ObjInfo FuncProto ty _)
                                -> if ty == ctype funcInfo
                                   then addEnv global_lev (name, funcInfo)
-                                  else err
-                           (ObjInfo Func _ _) -> err
+                                  else funcDeclError p name
+                           (ObjInfo Func _ _) -> funcDeclError p name
                            _                  -> addEnv global_lev (name, funcInfo)
           Nothing  -> addEnv global_lev (name, funcInfo); }
 
@@ -81,7 +66,7 @@ makeVarInfo :: SourcePos -> Level -> (DeclType, DirectDecl) -> (Identifier, ObjI
 makeVarInfo p lev (dcl_ty, dcl)
     = let ty = convType dcl_ty in
       if containVoid ty
-      then error $ concat [show p, ": variable contains void"]
+      then voidError p
       else case dcl of
              (Variable _ name)      -> (name, ObjInfo Var ty lev)
              (Sequence _ name size) -> (name, ObjInfo Var (CArray ty size) lev)
@@ -90,7 +75,7 @@ makeParmInfo :: SourcePos -> (DeclType, Identifier) -> (Identifier, ObjInfo)
 makeParmInfo p (dcl_ty, name)
     = let ty = convType dcl_ty in
       if containVoid ty
-      then error $ concat [show p, ": parameter contains void"]
+      then voidError p
       else (name, ObjInfo Parm ty param_lev)
 
 convType :: DeclType -> CType
@@ -106,16 +91,15 @@ extendEnv p lev (name, info)
     = do {
         dupInfo <- findAtTheLevel lev name;
         case dupInfo of
-          (Just _) -> error $ concat [show p, ": duplicate variable decralations ", name]
-          Nothing  -> tellShadowing p name lev >> addEnv lev (name, info); }
+          Nothing  -> tellShadowing p name lev >> addEnv lev (name, info)
+          (Just _) -> duplicateError p name; }
 
 tellShadowing :: SourcePos -> Identifier -> Level -> StateEnv ()
 tellShadowing p name baseLev
     = do {
         hiddenInfo <- find (baseLev-1) name;
         case hiddenInfo of
-          (Just _) -> tell [(concat ["Warning ", show p, " : ", name,
-                                     " shadows same name variables."])]
+          (Just _) -> tell $ [warningMsg p name]
           Nothing  -> return (); }
 
 deleteLevel :: Level -> StateEnv ()
@@ -138,7 +122,7 @@ findFromJust p lev name
         maybeInfo <- find lev name;
         case maybeInfo of
           (Just info) -> return info
-          Nothing     -> error $ concat [show p, ": var '", name,"' is not defined."]; }
+          Nothing     -> undefinedError p name; }
 
 findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
 findAtTheLevel lev name = liftM (\e -> M.lookup lev e >>= lookup name) get
