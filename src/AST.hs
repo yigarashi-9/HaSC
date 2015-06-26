@@ -72,8 +72,6 @@ instance Eq Expr where
     (==) (UnaryPrim _ op e)      (UnaryPrim _ op' e')  = op == op' && e == e'
     (==) (ApplyFunc _ d s)       (ApplyFunc _ d' s')   = d == d' && s == s'
     (==) (MultiExpr _ es)        (MultiExpr _ es')     = es == es'
-    (==) (MultiExpr _ [e])       e'                    = e == e'
-    (==) e'                      (MultiExpr _ [e])     = e == e'
     (==) (Constant _ c)          (Constant _ c')       = c == c'
     (==) (IdentExpr _ i)         (IdentExpr _ i')      = i == i'
     (==) (BinaryPrim _ op e1 e2) (BinaryPrim _ op' e1' e2')

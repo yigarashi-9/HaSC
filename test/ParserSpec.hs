@@ -19,14 +19,13 @@ c = Constant u
 exprSample :: Expr
 exprSample = BinaryPrim u "||" (v "a")
              (BinaryPrim u "&&" (v "b")
-              (UnaryPrim u "*" (BinaryPrim u "+" (v "c") (MultiExpr u [(v "d")]))))
+              (UnaryPrim u "*" (BinaryPrim u "+" (v "c") (v "d"))))
 
 stmtSample1 :: Stmt
 stmtSample1 = CompoundStmt u
              [DeclStmt u [(DeclInt, Variable u "a"), (DeclInt, Sequence u "b" 20)],
               DeclStmt u [(DeclPointer DeclInt, Variable u "c")],
-              ExprStmt u $ MultiExpr u $ [AssignExpr u (v "a")
-                                                       (BinaryPrim u "+" (v "c") (v "d"))]]
+              ExprStmt u $ AssignExpr u (v "a") (BinaryPrim u "+" (v "c") (v "d"))]
 
 stmtSample2 :: Stmt
 stmtSample2 = IfStmt u exprSample stmtSample1 (EmptyStmt u)
@@ -73,10 +72,10 @@ spec = do
 
     it "Statement" $ do
       parse stmt "" ";" `shouldBe` (Right $ EmptyStmt u)
-      parse stmt "" "a;" `shouldBe` (Right $ ExprStmt u $ MultiExpr u [(v "a")])
+      parse stmt "" "a;" `shouldBe` (Right $ ExprStmt u $ (v "a"))
       parse stmt "" "{int a, b[20]; int *c; a = c + d;}" `shouldBe` (Right stmtSample1)
       parse stmt "" "if(a) ; else ;" `shouldBe`
-                (Right $ IfStmt u (MultiExpr u [(v "a")]) (EmptyStmt u) (EmptyStmt u))
+                (Right $ IfStmt u (v "a") (EmptyStmt u) (EmptyStmt u))
       parse stmt "" "if(a || b && c[d]){int a, b[20]; int *c; a = c + d;}" `shouldBe`
                 (Right $ stmtSample2)
       parse stmt "" longTestCase1 `shouldBe`
