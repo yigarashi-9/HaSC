@@ -155,8 +155,16 @@ compoundStmt :: Parser [Stmt]
 compoundStmt = braces
                (do
                  decls <- many $ liftM2 (,) getPosition (try decl)
-                 stmts <- many (try stmt)
+                 stmts <- liftM flattenCompoundStmt (many $ try stmt)
                  return $ (map (uncurry DeclStmt) decls) ++ stmts)
+
+flattenCompoundStmt :: [Stmt] -> [Stmt]
+flattenCompoundStmt = foldr flatten []
+    where flatten s acc =
+              case s of
+                (CompoundStmt _ stmts) -> stmts ++ acc
+                stmt                   -> stmt:acc
+
 
 ifStmt :: Parser Stmt
 ifStmt = do
@@ -183,13 +191,11 @@ whileStmt = do
 forStmt :: Parser Stmt
 forStmt = do
   pos    <- getPosition <* (symbol "for" >> symbol "(")
-  dec    <- expr <* semi
-  cond   <- expr <* semi
-  update <- expr <* symbol ")"
+  init   <- option (EmptyStmt pos) (liftM (ExprStmt pos) expr) <* semi
+  cond   <- option (Constant pos 1) expr <* semi
+  update <- option (EmptyStmt pos) (liftM (ExprStmt pos) expr) <* symbol ")"
   body   <- stmt
-  return $ CompoundStmt pos [ExprStmt pos dec,
-                             WhileStmt pos cond
-                                           (CompoundStmt pos [body, ExprStmt pos update])]
+  return $ forToWhile pos body init cond update
 
 returnStmt :: Parser Stmt
 returnStmt = do
@@ -270,6 +276,15 @@ table = [(Prefix op_neg):(map op_prefix ["&", "*"]),
                       return $ BinaryPrim pos "*" (Constant pos (-1)) }
       op_prefix s = Prefix (op_func UnaryPrim s)
       op_infix  s = Infix  (op_func BinaryPrim s) AssocLeft
+
+forToWhile :: SourcePos -> Stmt -> Stmt -> Expr -> Stmt -> Stmt
+forToWhile pos body init cond update
+    = CompoundStmt pos [init, WhileStmt pos cond whileBody]
+    where
+      whileBody = case body of
+                    (CompoundStmt p stmts) -> (CompoundStmt p
+                                               (stmts ++ [update]))
+                    stmt -> (CompoundStmt pos [stmt, update])
 
 compressPointer :: Expr -> Expr
 compressPointer (UnaryPrim _ "*" (UnaryPrim _ "&" e)) = compressPointer e
