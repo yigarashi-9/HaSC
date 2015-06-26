@@ -72,7 +72,7 @@ comma = P.comma lexer
    ************************* -}
 
 smallC :: Parser Program
-smallC = many1 externalDecl
+smallC = whiteSpace >> many1 externalDecl
 
 externalDecl :: Parser EDecl
 externalDecl =  try (liftM2 Decl getPosition decl)
@@ -154,7 +154,7 @@ stmt =  try (semi >> liftM EmptyStmt getPosition)
 compoundStmt :: Parser [Stmt]
 compoundStmt = braces
                (do
-                 decls <- many $ liftTM getPosition (try decl)
+                 decls <- many $ liftM2 (,) getPosition (try decl)
                  stmts <- many (try stmt)
                  return $ (map (uncurry DeclStmt) decls) ++ stmts)
 
@@ -232,7 +232,7 @@ postFixHeader =  try (liftM3 ApplyFunc getPosition
 
 arrayAccess :: Expr -> Parser Expr
 arrayAccess h = do
-  accesser <- many1 $ liftTM getPosition (brackets expr)
+  accesser <- many1 $ liftM2 (,) getPosition (brackets expr)
   return $ foldl (\acc (p, i) -> UnaryPrim p "*" (BinaryPrim p "+" acc i)) h accesser
 
 primaryExpr :: Parser Expr
@@ -270,13 +270,6 @@ table = [(Prefix op_neg):(map op_prefix ["&", "*"]),
                       return $ BinaryPrim pos "*" (Constant pos (-1)) }
       op_prefix s = Prefix (op_func UnaryPrim s)
       op_infix  s = Infix  (op_func BinaryPrim s) AssocLeft
-
-
-liftTM :: Monad m => m a -> m b -> m (a, b)
-liftTM ma mb = do
-  a <- ma
-  b <- mb
-  return (a, b)
 
 compressPointer :: Expr -> Expr
 compressPointer (UnaryPrim _ "*" (UnaryPrim _ "&" e)) = compressPointer e
