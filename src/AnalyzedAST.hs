@@ -3,9 +3,14 @@ module AnalyzedAST where
 import AST
 import Text.Parsec.Pos
 import Data.List
-
+import Control.Monad.State.Strict
 
 {- オブジェクトの情報を収集するためのデータ型 -}
+
+type Strict = State ()
+
+runStrictly :: Strict a -> a
+runStrictly s = evalState s ()
 
 data ObjInfo  = ObjInfo { kind  :: Kind,
                           ctype :: CType,
