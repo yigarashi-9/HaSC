@@ -1,5 +1,6 @@
 \documentclass{jsarticle}
 \usepackage[dvipdfmx]{graphicx}
+\usepackage{url}
 \usepackage[a4paper]{geometry}
 \begin{document}
 
@@ -9,13 +10,14 @@
 \maketitle
 
 \section{はじめに}
-本実験の実装はHaskellで行っている。不明な点があれば以下に挙げる資料を参照せよ。
+本実験の実装はHaskellで行っている。コンパイラは ghc 7.10.1 を利用しており、以前のバージョンに比べて Prelude が拡張されているなどのクリティカルな差異があるので注意せよ。不明な点があれば以下に挙げる資料を参照せよ。
 \begin{itemize}
 \item https://www.haskell.org/documentation (リファレンス集)
 \item https://www.haskell.org/hoogle/ (Haskell用の検索エンジン)
 \end{itemize}
 
 \section{課題8}
+資料で提示されている構文糖衣を実装する。\\
 \subsection{単項の(-)演算子}
 単項の(-)を(-1)との積に変換することによって構文木を簡略化する。演算子テーブルで(-)演算子に対応する変換関数 op\_neg を実装することで実現している。オペランドを受け取り BinaryPrim (つまり (-1) との積 )を返すようになっている。
 \begin{verbatim}
@@ -36,170 +38,228 @@ ifStmt = do
 \end{verbatim}
 
 \subsection{for文}
-for文を資料17ページにあるような形式に変換する。以下のような実装になっている。初期化式、条件式、更新式の3つを順番にパースしてきて構文糖衣を組み立てている。body が必ずしも CompoundStmt とは
+for文を資料17ページにあるような形式に変換する。以下のような実装になっている。初期化式、条件式、更新式の3つを順番にパースしてきて構文糖衣を組み立てている。初期化式が省略されている場合は EmptyStmt を、条件式が省略されている場合は定数の1を、更新式が省略されている場合は EmptyStmt をそれぞれ埋め込むことにしている。また forToWhile では本体が複合文であるかどうかに応じて処理を分岐している。
 \begin{verbatim}
 forStmt :: Parser Stmt
 forStmt = do
   pos    <- getPosition <* (symbol "for" >> symbol "(")
-  init   <- expr <* semi
-  cond   <- expr <* semi
-  update <- expr <* symbol ")"
+  init   <- option (EmptyStmt pos) (liftM (ExprStmt pos) expr) <* semi
+  cond   <- option (Constant pos 1) expr <* semi
+  update <- option (EmptyStmt pos) (liftM (ExprStmt pos) expr) <* symbol ")"
   body   <- stmt
-  return $ CompoundStmt pos
-           [ExprStmt pos init,
-            WhileStmt pos cond
-               (CompoundStmt pos [body, ExprStmt pos update])]
+  return $ forToWhile pos body init cond update
+
+forToWhile :: SourcePos -> Stmt -> Stmt -> Expr -> Stmt -> Stmt
+forToWhile pos body init cond update
+    = CompoundStmt pos [init, WhileStmt pos cond whileBody]
+    where
+      whileBody = case body of
+                    (CompoundStmt p stmts) -> (CompoundStmt p
+                                               (stmts ++ [update]))
+                    stmt -> (CompoundStmt pos [stmt, update])
 \end{verbatim}
-\subsection{プログラムの説明}
-\begin{description}
-\item[initialize] \mbox{} \\
-配列の先頭のポインタを受け取って、配列の先頭から降順の数値で埋める。
-\item[sort] \mbox{} \\
- 配列の先頭のポインタを受け取って、バブルソートを行う。
-\end{description}
-
-\section{課題5}
-\subsection{課題の回答}
-抽象構文木のデータ構造は src/AST.hs 構文解析器は src/Parser.hs をそれぞれ参照せよ。
-
-\subsection{ASTの設計方針}
-以下にデータ構造を列挙して説明していく。説明の過程で実験資料のBNFで使われている用語が登場するので適宜参照せよ。またSourcePosはソース名と位置情報を持った組み込みのデータ型であり、全てのノードが持っている。詳細は Text.Parsec.Pos.hs (公式ライブラリ)を参照せよ。
-
-\subsubsection{型シノニム}
-よく現れる型に対してエイリアスを張っている。このような型シノニムを適切に定義することで型注釈がより実際の動作を反映したものとなりプログラムが読みやすくなっていく。未知の型も登場するがこのあと説明するのでまずは先へ進むこと。
+\subsection{配列参照式}
+配列参照式をポインタによる間接参照式に置き換える。インデックスは先頭ポインタからのオフセットであるからポインタ演算に置き換えることができる。中では多次元配列のアクセスもカバーするような実装になっていて、添字アクセスの列を accesser に束縛しそれを外側から * 演算子と + 演算子を利用して巻き取っていく形になっている。
 \begin{verbatim}
-type Program    = [EDecl]
-type Identifier = String
-type DeclList   = [(Type, DirectDecl)] -
+arrayAccess :: Expr -> Parser Expr
+arrayAccess h = do
+  accesser <- many1 $ liftM2 (,) getPosition (brackets expr)
+  return $ foldl (\acc (p, i) ->
+                   UnaryPrim p "*" (BinaryPrim p "+" acc i)) h accesser
 \end{verbatim}
+
+\subsection{print関数}
+資料ではプロトタイプ宣言を追加して整合性を保つとなっているが、実装の都合で解析の初期環境に print 関数を登録する形で解決した。関数の実体はないので中間表現以降で特別に分岐することになる。
+\begin{verbatim}
+initialEnv :: Env
+initialEnv = M.fromList [(0, [("print",
+                               (ObjInfo Func (CFun CVoid [CInt]) 0))])]
+
+semanticAnalyze :: Program -> (A_Program, [String])
+semanticAnalyze prog = runEnv body initialEnv
+    where body = do collectGlobal prog
+                    ret <- analyze prog
+                    typeCheck ret >> return ret
+\end{verbatim}
+
+\section{課題10}
+\subsection{オブジェクト情報の収集・変数との対応付け}
+抽象構文木をたどって変数および関数の宣言を解析することでオブジェクトの情報を収集していく。オブジェクトの情報は ObjInfo 型のレコードで、種類、型、レベルを保持し環境へ追加していく。独立した局所環境を区別するために環境の追加と削除を繰り返しながら木をたどるので、変数との対応付けも同時に行っている。最終的には宣言と変数に関する情報を ObjInfo に変換した Analyzed\_ASTを定義して返している。
+
+\subsubsection{型の定義}
+オブジェクトの情報に関する ObjInfo に関する宣言は以下のようになっている。概ね資料の通りなので再び説明することはしない。
+\begin{verbatim}
+data ObjInfo  = ObjInfo { kind  :: Kind,
+                          ctype :: CType,
+                          level :: Level
+                        }deriving(Eq, Show, Ord)
+
+type Level = Int
+data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
+data CType = CInt
+           | CVoid
+           | CPointer CType
+           | CArray   CType Integer
+           | CFun     CType [CType]
+           deriving(Ord)
+\end{verbatim}
+
+\subsubsection{オブジェクト情報の収集}
+以下にアルゴリズムの概要を示す。2と3について、環境に入る操作と環境を削除して出てくる操作はアトミックな操作で一般化できるので、Python の with 文にならって withEnv というコンビネータを用意している。そこがブロック解析のエントリーポイントとなるので、コード理解の助けとしてほしい。
+\begin{enumerate}
+\item まず collectGlobal 関数によってグローバルな宣言を全て集める。(グローバルな宣言はプログラムのどこからでもアクセスすることができるので特別扱いする必要がある。またこのとき重複した宣言やプロトタイプ宣言の整合性などをチェックしていく)
+\item グローバルな環境を持った状態で個別の関数の環境へ再帰的に入って情報を収集する。
+\item 関数のブロックに限らず複合文の個別な閑居を抜ける時は、その環境の変数は無効になるので削除してから出る。
+\end{enumerate}
+
+\subsubsection{変数とオブジェクト情報の対応付け}
+変数とオブジェクト情報の対応付けは、上のオブジェクト情報の収集と並行して行っている。上記フローの2で個別の環境(つまりStmt以下の構造)に入り、変数に当たった時は 環境に対して find をして変数情報を引き出して新たな木に組み込む。単純に木を変換する以上の処理が必要になるのは以下の4点である。これ以外では木の形は変わらないので愚直な実装になっている。
 \begin{itemize}
-\item Program プログラム全体はEDecl(external-declaration)のリストで表現される。
-\item Identifier 識別子は文字列で表現される。
-\item DeclList 変数宣言は型とdirect-declarationの組によって表現される。
+\item analyzeStmt で CompoundStmt を読んだ時、withEnv で下の階層へ入る。
+\item analyzeStmt で DeclStmt を読んだ時、宣言されている情報を環境に追加する。
+\item analyzeExpr で ApplyFunc を読んだ時、環境から関数名を find して木に情報を埋め込む。変数を引いた場合は型検査で落とされるのでここでは気にしない。
+\item analyzeExpr で IdentExpr を読んだ時、環境から変数名を find して木に情報を埋め込む。このとき関数を引いた場合はエラ―とする。\\
+\end{itemize}
+変数情報を埋め込んだ AnalyzedAST の定義は以下のようになる。各ノードの役割は中間レポート1で解説しているのでそちらを参照していただきたい。
+\begin{verbatim}
+type A_Program = [A_EDecl]
+type A_Idnentifier = (Identifier, ObjInfo)
+
+data A_EDecl = A_Decl A_Idnentifier
+             | A_Func SourcePos A_Idnentifier [A_Idnentifier] A_Stmt
+               deriving(Eq, Show)
+
+data A_Stmt = A_EmptyStmt
+            | A_ExprStmt     A_Expr
+            | A_DeclStmt     [A_Idnentifier]
+            | A_CompoundStmt [A_Stmt]
+            | A_IfStmt       SourcePos A_Expr A_Stmt A_Stmt
+            | A_WhileStmt    SourcePos A_Expr A_Stmt
+            | A_ReturnStmt   SourcePos A_Expr
+            | A_RetVoidStmt  SourcePos
+              deriving(Eq, Show)
+
+data A_Expr = A_AssignExpr SourcePos A_Expr A_Expr
+            | A_UnaryPrim  SourcePos String A_Expr
+            | A_BinaryPrim SourcePos String A_Expr A_Expr
+            | A_ApplyFunc  SourcePos A_Idnentifier [A_Expr]
+            | A_MultiExpr  [A_Expr]
+            | A_Constant   Integer
+            | A_IdentExpr  A_Idnentifier
+              deriving(Eq, Show)
+\end{verbatim}
+
+\subsection{重複定義の検査}
+重複定義の検査は環境を拡張する extendEnv 関数に組み込まれているので、特に明示しなくても検査されるようになっている。あるレベルにオブジェクトを追加する前に find を実行して、そのレベルでオブジェクトが見つかる場合とそうでない場合に分岐している。関係するプログラムは以下の部分である。
+\begin{verbatim}
+findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
+findAtTheLevel lev name = liftM (\e -> M.lookup lev e >>= lookup name) get
+
+{- 重複を調べずに与えられた info を環境に追加する -}
+addEnv :: Level -> (Identifier, ObjInfo) -> StateEnv ()
+addEnv lev info_entry = liftM (M.insertWith (++) lev [info_entry]) get >>= put
+
+
+{- 重複を調べてから環境を拡張する -}
+extendEnv :: SourcePos -> Level -> (Identifier, ObjInfo) -> StateEnv ()
+extendEnv p lev (name, info)
+    = do {
+        dupInfo <- findAtTheLevel lev name;
+        case dupInfo of
+          Nothing  -> tellShadowing p name lev >> addEnv lev (name, info)
+          (Just _) -> duplicateError p name; }
+\end{verbatim}
+
+\subsection{式の形の検査}
+式の形の検査は型検査の一部として行っている。
+\subsubsection{\& 演算子のオペランドのチェック}
+\& 演算子のオペランドは変数参照式のみであるので以下のようにチェックしている。
+\begin{verbatim}
+checkAddressReferForm :: SourcePos -> A_Expr -> StateEnv ()
+checkAddressReferForm _ (A_IdentExpr _) = wellTyped
+checkAddressReferForm p _ = addrFormError p
+\end{verbatim}
+
+\subsubsection{代入文の形の検査}
+代入文の左辺には$*e$の形の式か変数のみが現れるので以下のようにチェックしている。変数でも配列参照である可能性があるためパターンマッチで排除している。
+\begin{verbatim}
+checkAssignForm :: SourcePos -> A_Expr -> StateEnv()
+checkAssignForm p (A_IdentExpr (name, ObjInfo kind ty _))
+    = case (kind, ty) of
+        (Var, (CArray _ _))  -> assignError p
+        (Var, _)             -> wellTyped
+        (Parm, (CArray _ _)) -> assignError p
+        (Parm, _)            -> wellTyped
+        (Func, _)            -> assignError p
+        (FuncProto, _)       -> assignError p
+checkAssignForm p (A_UnaryPrim _ "*" _) = wellTyped
+checkAssignForm p _ = assignError p
+\end{verbatim}
+
+\subsection{型検査}
+AnalyzedASTをたどって資料のとおりに検査をしている。工夫をした点が2点あり、ひとつはreturnが省略された関数の返り値の型を判定するために文にも擬似的に型を付けた点。もうひとつは型チェックが正格に評価されるように Strict モナドを定義したことである。以下に詳しく説明していく。
+\subsubsection{文の型}
+Small C の定義によれば return 文の無い関数は自動的に void 型が付くことになっているが、全体に return 文がないかを調べるには構文木を再帰的にたどって結果をトップレベルまで伝播させなければいけない。その過程で Statement にも型を与えたほうが都合が良いので以下のように定義する。
+\begin{itemize}
+\item $return e;$ には $e$ の型が付く
+\item RetVoidSttm には void 型が付く
+\item CompoundStmt は return 文が含まれていればその型が、それ以外は void 型が付く
+\item IfStmt は 二つの節の型を併合した型が付く
+\item WhileStmt には本体の節の型が付く
+\item それ以外には void 型が付く
 \end{itemize}
 
-\subsubsection{EDecl}
-external-declarationに対応するデータ構造である。グローバル変数宣言(declaration)、プロトタイプ宣言(function-prototype)、関数定義(function-definition)の3つの役割を果たす。以下にそれぞれのノードについて解説する。
+(注: 型の併合は CType を Ord 型クラスのインスタンスとして max 関数で行っている。これは return によって型が明示されれば暗黙の void が消えるという性質をよく満たす。テストの関係で Ord インスタンスは導出してあるので利用した)
+
+\subsubsection{Strict モナド}
+今回の型検査は、正しい場合では () 型が返り、正しくない場合はその場で例外が投げられる。これはいずれの場合でもあとで必要になるような具体的な返り値が存在しないということを意味し、Haskell の遅延評価によってサンクのまま捨てられてしまう。そこで Control.Monad.State.Strict の状態部分に () を与えたものを Strict モナドとし、一連の検査が正格に評価されるようにした。定義は以下のようである。
 \begin{verbatim}
-data EDecl = Decl          SourcePos DeclList
-           | FuncPrototype SourcePos Type Identifier [(Type, Identifier)]
-           | FuncDef       SourcePos Type Identifier [(Type, Identifier)] Stmt
-\end{verbatim}
-\begin{itemize}
-\item Decl SourcePos DeclList \mbox{} \\
-グローバルな変数宣言についてのノードであり具体的な内容はDeclListによって表現される。型宣言は先頭の一つだけだが、そのあとに続く変数は整数とポインタで別々の型を取りうるので、各変数と型はこの時点で一対一に対応させている。\\
-\item FuncPrototype SourcePos Type Identifier [(Type, Identifier)] \mbox{} \\
-プロトタイプ宣言についてのノードである。左から返り値の型、関数名、引数リストである。引数リストは型と識別名だけ分かれば良いためそれらを組にしたリストとしている。\\
-\item FuncDef SourcePos Type Identifier [(Type, Identifier)] Stmt\mbox{} \\
-関数定義についてのノードである。プロトタイプ宣言と同様のデータ構造に加えて関数本体をStmtとして持っている。実際はBNFの定義によりcompound-stmtだけが来るようになっている。\\
-\end{itemize}
+type Strict = State ()
 
-\subsubsection{Type}
-SmallCの型に対応するデータ型。定義は以下のようである。
+runStrictly :: Strict a -> a
+runStrictly s = evalState s ()
+\end{verbatim}
+
+これはあまり良い解決策ではない。詳細は以下の記事で論じている。
+\url{http://yu-i9.hatenablog.com/entry/2015/06/28/220439}
+
+\subsection{サンプル}
+オブジェクト情報を埋め込んだあとの抽象構文木を示す。
 \begin{verbatim}
-data Type = CPointer Type
-          | CInt
-          | CVoid
+int k;
+int main(int j){
+  int i;
+  i = 3;
+  if(i == 3){
+    return k;
+  }else{
+    return j;
+  }
+}
+
+実行結果が以下
+
+([A_Decl ("k",ObjInfo {kind = Var, ctype = int, level = 0}),
+  A_Func "test/test.c" (line 2, column 1)
+    ("main",ObjInfo {kind = Func, ctype = (int) -> int, level = 0})
+      [("j",ObjInfo {kind = Parm, ctype = int, level = 1})]
+        (A_CompoundStmt
+          [A_DeclStmt [("i",ObjInfo {kind = Var, ctype = int, level = 2})],
+           A_ExprStmt (A_AssignExpr "test/test.c" (line 4, column 5)
+                        (A_IdentExpr ("i",ObjInfo {kind = Var, ctype = int, level = 2}))
+                        (A_Constant 3)),
+           A_IfStmt "test/test.c" (line 5, column 3)
+            (A_BinaryPrim "test/test.c" (line 5, column 8) "=="
+              (A_IdentExpr ("i",ObjInfo {kind = Var, ctype = int, level = 2}))
+              (A_Constant 3))
+            (A_CompoundStmt
+              [A_ReturnStmt "test/test.c" (line 6, column 5)
+                (A_IdentExpr ("k",ObjInfo {kind = Var, ctype = int, level = 0}))])
+            (A_CompoundStmt
+              [A_ReturnStmt "test/test.c" (line 8, column 5)
+                (A_IdentExpr ("j",ObjInfo {kind = Parm, ctype = int, level = 1}))])])],[])
 \end{verbatim}
-現状の文法ではCPointer CInt, CInt, CVoidしか現れないことになっているが、CPointerの引数を自分自身とすることで、char型やポインタのポインタといった拡張にも自然に対応することができる。
-
-\subsubsection{DirectDecl}
-direct-declarationに対応するノードである。型情報はさらに上のレベルで付加されるのでこのノードには必要ない。コードは以下である。
-\begin{verbatim}
-data DirectDecl = Variable SourcePos Identifier
-                | Sequence SourcePos Identifier Integer
-\end{verbatim}
-Variableは変数で識別名だけを持っている。Sequenceは配列で識別名と配列サイズを持っている。
-
-\subsubsection{Stmt}
-statementに対応するノードである。定義は以下のようになる。
-\begin{verbatim}
-data Stmt = EmptyStmt    SourcePos
-          | ExprStmt     SourcePos Expr
-          | DeclStmt     SourcePos DeclList
-          | CompoundStmt SourcePos [Stmt]
-          | IfStmt       SourcePos Expr Stmt Stmt
-          | WhileStmt    SourcePos Expr Stmt
-          | ReturnStmt   SourcePos Expr
-\end{verbatim}
-以下に各コンストラクタを説明していく。
-\begin{itemize}
-\item EmptyStmt SourcePos \mbox{} \\
-空の文(;)に対応する。
-\item ExprStmt SourcePos Expr \mbox{} \\
-expressionの文に対応する。
-\item DeclStmt SourcePos DeclList \mbox{} \\
-compound-statementの中に登場する変数宣言文を表現するノード。compound-statement以外には現れない。
-\item CompoundStmt SourcePos [Stmt] \mbox{} \\
-compound-statementに対応するノード。中カッコで囲まれた部分に現れる複数のstatementをリスト形式で保持している。
-\item IfStmt SourcePos Expr Stmt Stmt \mbox{} \\
-if文に対応するノード。左から条件節、True節、False節を保持している。elseのないif文はFalse節をEmptyStmtにすることで実現している。
-\item WhileStmt SourcePos Expr Stmt \mbox{} \\
-while文対応するノード。左から条件節と本体である。
-\item returnStmt SourcePos Expr \mbox{} \\
-return文に対応するノード。与えられたExprを保持する
-\end{itemize}
-
-\subsubsection{Expr}
-expressionに対応するノードである。BNF上では結合の強さによって文法要素が入れ子状に表現されているが、データ構造では同じレベルに置いて実装している。正しい構文要素が現れていることは構文解析の実装や意味解析によって担保していくためこの段階では大雑把な定義になっている。実際の定義は以下のようになる。
-\begin{verbatim}
-data Expr = AssignExpr   SourcePos Expr Expr
-          | UnaryPrim    SourcePos String Expr
-          | BinaryPrim   SourcePos String Expr Expr
-          | ArrayAccess  SourcePos Expr Expr
-          | ApplyFunc    SourcePos String [Expr]
-          | MultiExpr    SourcePos [Expr]
-          | Constant     SourcePos Integer
-          | IdentExpr    SourcePos Identifier
-\end{verbatim}
-以下に各コンストラクタを説明していく。
-
-\begin{itemize}
-\item AssignExpr SourcePos Expr Expr \mbox{} \\
-代入文(assign-expr)に対応するノードである。左のExprがディスティネーションで右のExprがソースである。
-\item UnaryPrim SourcePos String Expr \mbox{} \\
-単項演算子の適用に対応するノードである。Stringに演算子、Exprに適用する項を保持している。
-\item BinaryPrim SourcePos String Expr Expr \mbox{} \\
-二項演算子の適用に対応するノードである。Stringに演算子、残りはそれぞれ左オペランドと右オペランドに対応している。
-\item ArrayAccess SourcePos Expr Expr \mbox{} \\
-配列アクセスに対応したノードである。左のExprがソースに対応し、右のExprが添字に対応する。ソース部分にArrayAccessが現れても良いので文法上は多重配列アクセスも可能になっている。
-\item ApplyFunc SourcePos String [Expr] \mbox{} \\
-関数適用に対応したノードである。Stringは適用先の関数名で[Expr]が引数リストになっている。
-\item Constant SourcePos Integer \mbox{} \\
-定数に対応したノード。単純に符号付き数を保持している。
-\item IdentExpr SourcePos Identifier \mbox{} \\
-変数に対応したノード。識別子を文字列で保持している。
-\end{itemize}
-\subsection{Parserの設計方針}
-標準ライブラリのText.Parsecの力によりBNFをそのまま書き写すだけでほぼ実装が完了するため、関数を逐一説明するようなことはしない。全体の大まかな流れと工夫が必要であった部分についてParser.hsを参照しながら説明していく。
-\subsubsection{全体の流れ}
-\begin{itemize}
-\item 25行目　文法の定義 \mbox{} \\
-ライブラリが提供するデータ構造に沿って、予約語と演算子を定義する。
-\item 31 - 64行目　lexer \mbox{} \\
-上で定義したデータ型からlexerセットを生成して、必要になるlexerを取り出す。
-\item 73 - 140行目　external-declaration のパーサー \mbox{} \\
-external-declarationの構文をパースする部分。externalDeclで変数宣言、プロトタイプ宣言、関数宣言の3つに分岐して各部分をパースする。DeclListを生成する部分で少し工夫があるので後述する。
-\item 142 - 196行目　statement のパーサー \mbox{} \\
-statementの構文をパースする部分。for文をwhile文に変換している以外は特に特別なことはしていない。
-\item 198 - 234行目　expression のパーサー \mbox{} \\
-expressionの構文をパースする部分。logical-OR-exorからunary-exprまでの優先度付き演算子で表現されている部分は buildExpressionParser を利用して簡潔に書いている。演算子テーブルは248行目から定義されているリストである。
-\end{itemize}
-\subsubsection{工夫した部分}
-\begin{itemize}
-\item 宣言におけるポインタの処理 \mbox{} \\
-例えば $int a, *b$ というような宣言を考える。BNF上ではまず $int$ と $a, *b$に分解されてしまうのだが、意味の上では $int$ はそれぞれの変数にかからなければいけない。そこで各変数がポインタであるか否かの情報を回収し、genDecl(88行目)によって変数ごとに型を生成してDeclListとしている。pointerOp(245行目)によってポインタ演算子をパースし、checkPointer(242行目)でそれを受け取って型の変換を行っている。\\
-\item 演算子の処理 \mbox{} \\
-logical-OR-exprからunary-exprまでの構文木は項と演算子で構成されており、構造が非常に似ている。そこで構文木のデータ型を抽象化し演算子と項を受け取る形式にした。Haskellでは文字列レベルでのパターンマッチも可能なので後半のコード量は変わらず、かつParserのコード量を大きく削減できる。
-\end{itemize}
-
-\section{課題6}
-パーサーに対するテストが test/ParserSpec.hs にいくらか定義されており、パース元のプログラムとパース結果の抽象構文木の対応を見ることができるのでそれを回答とする。\\
-また文法的に正しくないプログラムを入力した場合はパース結果が $Left  ParseError$ となり位置や正しい文法要素が報告されるようになっている。これはParsecライブラリの仕様である。
-
-\section{課題7}
-回答コードは src/ProgramGenerator.hs である。実装については木を素直に辿りながら適切な文字列を生成すればよいだけなので特筆すべき点はない。プログラムの再生成自体を各データ型の Show インスタンスとしてしまうことも考えたが、結果は構文木のままで表示されたほうがデバッグしやすいため採用しなかった。
 
 \section{感想}
-HaskellでParserは書き慣れていたのでやるだけ感が強かったが、コンビネータなども調べながら楽しくコーディングできた。進捗に余裕が出てきているので最適化を頑張りたい。
+3時間くらいで終わると思ったが3週間近くかかってしまった。パーサーとは違って実装方法もたくさんあり、それぞれの長所と短所をよく考えながらじっくりと取り組んだ。と言いつつ、微妙だけど動くし実装し直すのは面倒だし…という感じで残ってしまったクソコードがたくさんあり、大きいコードを書くのは大変だなぁと思った。特に型検査周りは考えうる限り最悪の解決という感じがするので時間を見て手を入れたいと思う。あまり満足の行く結果ではないが、友人には読みやすいという評価もいただいたのでぼちぼち頑張って行きたい。
 \end{document}

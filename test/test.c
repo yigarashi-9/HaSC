@@ -1,8 +1,10 @@
-int main(){
-  int f;
-  if(f){
-    return;
+int k;
+int main(int j){
+  int i;
+  i = 3;
+  if(i == 3){
+    return k;
   }else{
-    return 1;
+    return j;
   }
 }
