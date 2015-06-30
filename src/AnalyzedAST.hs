@@ -7,10 +7,7 @@ import Control.Monad.State.Strict
 
 {- オブジェクトの情報を収集するためのデータ型 -}
 
-type Strict = State ()
-
-runStrictly :: Strict a -> a
-runStrictly s = evalState s ()
+type Check = Either String
 
 data ObjInfo  = ObjInfo { kind  :: Kind,
                           ctype :: CType,
