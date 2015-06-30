@@ -1,6 +1,4 @@
 # HaSC
-[![Build Status](https://travis-ci.org/yu-i9/HaSC.svg?branch=master)](https://travis-ci.org/yu-i9/HaSC)
-
 Haskell Small-C Compiler
 
 
@@ -8,4 +6,5 @@ Haskell Small-C Compiler
 京都大学情報学科計算機コース3回生配当『計算機科学実験及演習3  (ソフトウェア)』の課題リポジトリである。Cの完全なサブセットであるSmall CのコンパイラをHaskellで実装する。
 
 ## 進捗
-- 中間レポートが終了した (6/5)
+- 中間レポート1が終了した (06/05)
+- 中間レポート2が終了した (06/30)
