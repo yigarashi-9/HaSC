@@ -29,6 +29,8 @@ library
     Environment
     AnalyzedAST
     ErrorMsg
+    IntermedSyntax
+    ASTtoIntermed
   ghc-options:   -Wall
 
 executable HaSC

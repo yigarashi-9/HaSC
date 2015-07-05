@@ -8,6 +8,7 @@ int main(){
   initialize(array);
   sort(array);
   for(i = 0; i < 8; i = i + 1) print(array[i]);
+  return 0;
 }
 
 void initialize(int *array){

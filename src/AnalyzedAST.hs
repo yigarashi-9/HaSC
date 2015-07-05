@@ -12,7 +12,10 @@ type Check = Either String
 data ObjInfo  = ObjInfo { kind  :: Kind,
                           ctype :: CType,
                           level :: Level
-                        }deriving(Eq, Show, Ord)
+                        }deriving(Eq, Ord)
+
+instance Show ObjInfo where
+    show (ObjInfo _ _ lev) = show lev
 
 type Level = Int
 data Kind  = Var | Func | FuncProto | Parm deriving(Show, Eq, Ord)
@@ -21,10 +24,12 @@ data CType = CVoid
            | CPointer CType
            | CArray   CType Integer
            | CFun     CType [CType]
+           | CTemp
            deriving(Ord)
 
 instance Show CType where
     show (CInt)           = "int"
+    show (CTemp)          = "temp"
     show (CVoid)          = "void"
     show (CPointer CInt)  = "int *"
     show (CArray ty size) = show ty ++ "[" ++ show size ++ "]"
