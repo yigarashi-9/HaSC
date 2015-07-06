@@ -63,6 +63,7 @@ containVoid _             = False
 synType :: CType -> CType -> CType
 synType = max
 
+
 {- 収集したオブジェクト情報を埋め込むための新たな木。
    A_ は Analyzed の頭文字。
    SourcePos は必要になるところだけに埋め込んでいる。 -}

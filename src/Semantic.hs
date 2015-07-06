@@ -237,3 +237,11 @@ checkAssignForm p _ = fail $ assignError p
 
 wellTyped :: Check CType
 wellTyped = return CVoid
+
+isPointer :: A_Expr -> Bool
+isPointer e = case exprTypeCheck e of
+                (Left _)   -> undefined
+                (Right ty) -> case ty of
+                                (CPointer _) -> True
+                                (CArray _ _) -> True
+                                _            -> False

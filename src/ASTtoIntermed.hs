@@ -4,6 +4,7 @@ import Control.Monad
 import Control.Monad.State.Strict
 import Data.List
 
+import Semantic
 import AnalyzedAST
 import IntermedSyntax
 
@@ -88,9 +89,15 @@ foldCmpdStmt (idecl, istmt) stmt
                              return (idecl ++ map IVarDecl (extractTemp vars),
                                      istmt ++ stmts)
 
+{- 残念ながらプログラム上で宣言された変数も convExpr の結果に含まれてしまう．
+   CompoundStmt の decl に入ってしまうと困るので削除する．-}
 extractTemp :: [IVar] -> [IVar]
 extractTemp = filter ((== '@') . head . fst)
 
+
+{- 与えられた Expr の最終的な結果が格納される変数を
+   常に結果タプル第1要素の先頭に配置する．
+   それによってあとの変換で変数を使用することができる．-}
 convExpr :: A_Expr -> VarEnv ([IVar], [IStmt])
 convExpr (A_AssignExpr _ dest src)
     = case dest of
@@ -110,14 +117,11 @@ convExpr (A_UnaryPrim _ "&" e)
     = do dest <- freshVar
          (vars, stmts) <- convExpr e
          return (dest:vars, stmts ++ [ILet dest (IAddr $ result vars)])
--- ポインタ演算はどうにかしないと
 convExpr (A_BinaryPrim _ op e1 e2)
     | op `elem` ["+", "-", "*", "/"]
-        = do (vars1, stmts1) <- convExpr e1
-             (vars2, stmts2) <- convExpr e2
-             dest            <- freshVar
-             return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
-                             [ILet dest $ IAop op (result vars1) (result vars2)])
+        = if isPointer e1
+          then pointerCalc op e1 e2
+          else arithCalc op e1 e2
     | op `elem` ["<", ">", "<=", ">=", "==", "!="]
         = do (vars1, stmts1) <- convExpr e1
              (vars2, stmts2) <- convExpr e2
@@ -141,12 +145,15 @@ convExpr (A_BinaryPrim _ op e1 e2)
                                          [IIf (result vars2) [ILet dest (IInt 1)]
                                                              [ILet dest (IInt 0)]]])
 convExpr (A_ApplyFunc _ func args)
-    = do dest <- freshVar
-         res  <- mapM convExpr args
-         let resArgs = map (head . fst) res
-             resVars = concat $ map fst res
-             resStmt = concat $ map snd res
-         return (dest:resVars, resStmt ++ [ICall dest func resArgs])
+    = do res <- mapM convExpr args
+         if fst func == "print"
+         then let [(vars, stmts)] = res
+              in return (vars, stmts ++ [IPrint (result vars)])
+         else do  dest <- freshVar
+                  let resArgs = map (head . fst) res
+                      resVars = concat $ map fst res
+                      resStmt = concat $ map snd res
+                  return (dest:resVars, resStmt ++ [ICall dest func resArgs])
 convExpr (A_MultiExpr es)
     = do res <- mapM convExpr es
          -- 最後の結果が先頭にならないといけないので reverse
@@ -154,3 +161,23 @@ convExpr (A_MultiExpr es)
 convExpr (A_Constant n)
     = freshVar >>= (\dest -> return ([dest], [ILet dest (IInt n)]))
 convExpr (A_IdentExpr i) = return ([i], [])
+
+
+pointerCalc :: String -> A_Expr -> A_Expr -> VarEnv ([IVar], [IStmt])
+pointerCalc op e1 e2
+    = do (vars1, stmts1) <- convExpr e1
+         (vars2, stmts2) <- convExpr e2
+         (dest:v1:v2:[]) <- freshVars 3
+         return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
+                 [ILet v1 (IInt 4),
+                  ILet v2 (IAop "*" v1 (result vars2)),
+                  ILet dest $ IAop op (result vars1) v2])
+
+
+arithCalc :: String -> A_Expr -> A_Expr -> VarEnv ([IVar], [IStmt])
+arithCalc op e1 e2
+    = do (vars1, stmts1) <- convExpr e1
+         (vars2, stmts2) <- convExpr e2
+         dest            <- freshVar
+         return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
+                 [ILet dest $ IAop op (result vars1) (result vars2)])
