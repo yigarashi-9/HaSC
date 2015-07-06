@@ -7,21 +7,37 @@ import Data.List
 import AnalyzedAST
 import IntermedSyntax
 
-type TempVar = Int
-type VarEnv  = State TempVar
+type VarNum    = Int
+type Reuseable = [VarNum]
+type VarEnv    = State (Reuseable, VarNum)
 
 runEnv :: VarEnv a -> a
-runEnv v = evalState v 0
+runEnv v = evalState v ([], 0)
 
 freshVar :: VarEnv IVar
 freshVar = do
-  num <- get
-  put (num + 1)
-  return $ makeVar num
+  (reuse, num) <- get
+  newnum <- case reuse of
+              []     -> do put ([], num+1)
+                           return num
+              (n:ns) -> do put (ns, num)
+                           return n
+  return $ makeVar newnum
     where makeVar n = (("@" ++) . show $ n, ObjInfo Var CTemp (-1))
 
 freshVars :: Int -> VarEnv [IVar]
 freshVars n = replicateM n freshVar
+
+resetVars :: VarEnv ()
+resetVars = put ([], 0)
+
+collectUnuseVar :: IDecl -> VarEnv ()
+collectUnuseVar (IVarDecl (('@':varNum), _)) = do (reuse, num) <- get
+                                                  put (sort $ (read varNum):reuse, num)
+collectUnuseVar _ = return ()
+
+collectUnuseVars :: [IDecl] -> VarEnv ()
+collectUnuseVars = mapM_ collectUnuseVar
 
 result :: [IVar] -> IVar
 result [] = error "unexpected vars, sorry."
@@ -35,7 +51,7 @@ showIProgram prog = concat $ intersperse "\n" (map show prog)
 
 convDecl :: A_EDecl -> VarEnv IDecl
 convDecl (A_Decl var)              = return (IVarDecl var)
-convDecl (A_Func _ var parms body) = do (_, stmts) <- convStmt body
+convDecl (A_Func _ var parms body) = do (_, stmts) <- resetVars >> convStmt body
                                         let [cmpdStmt] = stmts
                                         return $ IFunDecl var parms cmpdStmt
 
@@ -61,6 +77,7 @@ convStmt (A_ReturnStmt _ e)
 convStmt (A_RetVoidStmt _) = return ([], [IEmpty])
 convStmt (A_CompoundStmt stmts)
     = do (decls, stmts) <- foldM foldCmpdStmt ([], []) stmts
+         collectUnuseVars decls
          return ([], [ICompound (map head . group . sort $ decls) stmts])
 
 foldCmpdStmt :: ([IDecl], [IStmt]) -> A_Stmt -> VarEnv ([IDecl], [IStmt])
