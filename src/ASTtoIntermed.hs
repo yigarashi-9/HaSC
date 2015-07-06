@@ -85,82 +85,72 @@ foldCmpdStmt (idecl, istmt) stmt
     = case stmt of
         (A_DeclStmt l) -> return (idecl ++ map IVarDecl l, istmt)
         otherStmt      -> do (vars, stmts) <- convStmt otherStmt
-                             return (idecl ++ map IVarDecl vars, istmt ++ stmts)
+                             return (idecl ++ map IVarDecl (extractTemp vars),
+                                     istmt ++ stmts)
 
+extractTemp :: [IVar] -> [IVar]
+extractTemp = filter ((== '@') . head . fst)
 
 convExpr :: A_Expr -> VarEnv ([IVar], [IStmt])
-convExpr expr = freshVar >>= convExprWithVar expr
-
-
-{- gVar (givenVar) が最終的な結果を格納するための変数．
-   Stmtのレベルでそれぞれの Expr の結果が必要になる
-   (例えば if の条件節で使う)ので， 格納先の変数を必ず
-   リストの先頭につけて head で回収できるようにする．
-   ただし，再帰的に convExprWithVar が呼び出される場合は
-   その中でリストが完成するので必ずしも明示的に gVar を追加しない-}
-convExprWithVar :: A_Expr -> IVar -> VarEnv ([IVar], [IStmt])
-convExprWithVar (A_AssignExpr _ dest src) gVar
+convExpr (A_AssignExpr _ dest src)
     = case dest of
-        (A_UnaryPrim _ "*" dst) -> do vsrc <- freshVar
-                                      (vars1, stmts1) <- convExprWithVar dst gVar
-                                      (vars2, stmts2) <- convExprWithVar src vsrc
+        (A_UnaryPrim _ "*" dst) -> do (vars1, stmts1) <- convExpr dst
+                                      (vars2, stmts2) <- convExpr src
                                       return (vars1 ++ vars2,
-                                              stmts1 ++ stmts2 ++ [IWrite gVar vsrc])
-        (A_IdentExpr vdst)      -> do vsrc <- freshVar
-                                      (vars, stmts) <- convExprWithVar src vsrc
-                                      return (vars, stmts ++ [ILet vdst (IVarExp vsrc)])
-convExprWithVar (A_UnaryPrim _ "*" e) gVar
-    = do v <- freshVar
-         (vars, stmts) <- convExprWithVar e v
-         return (gVar:vars, stmts ++ [IRead gVar v])
-convExprWithVar (A_UnaryPrim _ "&" e) gVar
-    = do v <- freshVar
-         (vars, stmts) <- convExprWithVar e v
-         return (gVar:vars, stmts ++ [ILet gVar (IAddr v)])
+                                              stmts1 ++ stmts2
+                                             ++ [IWrite (result vars1)  (result vars2)])
+        (A_IdentExpr vdst) -> do (vars, stmts) <- convExpr src
+                                 return (vars,
+                                         stmts ++ [ILet vdst (IVarExp $ result vars)])
+convExpr (A_UnaryPrim _ "*" e)
+    = do dest <- freshVar
+         (vars, stmts) <- convExpr e
+         return (dest:vars, stmts ++ [IRead dest (result vars)])
+convExpr (A_UnaryPrim _ "&" e)
+    = do dest <- freshVar
+         (vars, stmts) <- convExpr e
+         return (dest:vars, stmts ++ [ILet dest (IAddr $ result vars)])
 -- ポインタ演算はどうにかしないと
-convExprWithVar (A_BinaryPrim _ op e1 e2) gVar
+convExpr (A_BinaryPrim _ op e1 e2)
     | op `elem` ["+", "-", "*", "/"]
-        = do (v1:v2:[]) <- freshVars 2
-             (vars1, stmts1) <- convExprWithVar e1 v1
-             (vars2, stmts2) <- convExprWithVar e2 v2
-             return (gVar:(vars1 ++ vars2),
-                     stmts1 ++ stmts2 ++ [ILet gVar $ IAop op v1 v2])
+        = do (vars1, stmts1) <- convExpr e1
+             (vars2, stmts2) <- convExpr e2
+             dest            <- freshVar
+             return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
+                             [ILet dest $ IAop op (result vars1) (result vars2)])
     | op `elem` ["<", ">", "<=", ">=", "==", "!="]
-        = do (v1:v2:[]) <- freshVars 2
-             (vars1, stmts1) <- convExprWithVar e1 v1
-             (vars2, stmts2) <- convExprWithVar e2 v2
-             return (gVar:(vars1 ++ vars2),
-                     stmts1 ++ stmts2 ++ [ILet gVar $ IRelop op v1 v2])
+        = do (vars1, stmts1) <- convExpr e1
+             (vars2, stmts2) <- convExpr e2
+             dest            <- freshVar
+             return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
+                             [ILet dest $ IRelop op (result vars1) (result vars2)])
     | op == "&&"
-        = do (v1:v2:[]) <- freshVars 2
-             (vars1, stmts1) <- convExprWithVar e1 v1
-             (vars2, stmts2) <- convExprWithVar e2 v2
-             return (gVar:(vars1 ++ vars2),
-                     stmts1 ++ stmts2 ++
-                     [IIf v1 [IIf v2 [ILet gVar (IInt 1)]
-                                     [ILet gVar (IInt 0)]]
-                             [ILet gVar (IInt 0)]])
+        = do (vars1, stmts1) <- convExpr e1
+             (vars2, stmts2) <- convExpr e2
+             dest            <- freshVar
+             return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
+                     [IIf (result vars1) [IIf (result vars2) [ILet dest (IInt 1)]
+                                                             [ILet dest (IInt 0)]]
+                                         [ILet dest (IInt 0)]])
     | op == "||"
-        = do (v1:v2:[]) <- freshVars 2
-             (vars1, stmts1) <- convExprWithVar e1 v1
-             (vars2, stmts2) <- convExprWithVar e2 v2
-             return (gVar:(vars1 ++ vars2),
-                     stmts1 ++ stmts2 ++
-                     [IIf v1 [ILet gVar (IInt 1)]
-                             [IIf v2 [ILet gVar (IInt 1)]
-                                     [ILet gVar (IInt 0)]]])
-convExprWithVar (A_ApplyFunc _ func args) gVar
-    = let len = length args
-      in do vargs <- freshVars len
-            (vars, stmts) <- foldM foldConvExpr ([], []) (zip args vargs)
-            return (gVar:vars, stmts ++ [ICall gVar func vargs])
-convExprWithVar (A_MultiExpr es) gVar
-    = do tmpVars <- freshVars ((length es) - 1)
-         foldM foldConvExpr ([], []) (zip es (tmpVars ++ [gVar]))
-convExprWithVar (A_Constant n) gVar  = return ([gVar], [ILet gVar (IInt n)])
-convExprWithVar (A_IdentExpr i) gVar = return ([gVar], [ILet gVar (IVarExp i)])
-
-foldConvExpr :: ([IVar], [IStmt]) -> (A_Expr, IVar) -> VarEnv ([IVar], [IStmt])
-foldConvExpr (accVars, accStmts) (arg, gVar)
-    = do (vars, stmts) <- convExprWithVar arg gVar
-         return (vars ++ accVars, accStmts ++ stmts)
+        = do (vars1, stmts1) <- convExpr e1
+             (vars2, stmts2) <- convExpr e2
+             dest            <- freshVar
+             return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
+                     [IIf (result vars1) [ILet dest (IInt 1)]
+                                         [IIf (result vars2) [ILet dest (IInt 1)]
+                                                             [ILet dest (IInt 0)]]])
+convExpr (A_ApplyFunc _ func args)
+    = do dest <- freshVar
+         res  <- mapM convExpr args
+         let resArgs = map (head . fst) res
+             resVars = concat $ map fst res
+             resStmt = concat $ map snd res
+         return (dest:resVars, resStmt ++ [ICall dest func resArgs])
+convExpr (A_MultiExpr es)
+    = do res <- mapM convExpr es
+         -- 最後の結果が先頭にならないといけないので reverse
+         return (concat . reverse $ map fst res, concat $ map snd res)
+convExpr (A_Constant n)
+    = freshVar >>= (\dest -> return ([dest], [ILet dest (IInt n)]))
+convExpr (A_IdentExpr i) = return ([i], [])

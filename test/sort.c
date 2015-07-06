@@ -14,7 +14,7 @@ int main(){
 void initialize(int *array){
   int i;
   for(i = 0; i < 8; i = i + 1){
-    *(array+i) = 8 - i;
+    *(array+i) = num(i);
   }
 }
 
@@ -29,4 +29,9 @@ void sort(int *array){
       }
     }
   }
+}
+
+int num(int i){
+  if(i == 2 || i == 4) return i;
+  else return 8 - i;
 }
