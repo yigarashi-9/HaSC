@@ -39,6 +39,7 @@ instance Show CType where
 
 instance Eq CType where
     (==) CInt             CInt             = True
+    (==) CTemp            CTemp            = True
     (==) CVoid            CVoid            = True
     (==) (CPointer ty1)   (CPointer ty2)   = ty1 == ty2
     (==) (CArray ty1 _)   (CArray ty2 _)   = ty1 == ty2

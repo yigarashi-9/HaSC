@@ -24,7 +24,7 @@ freshVar = do
               (n:ns) -> do put (ns, num)
                            return n
   return $ makeVar newnum
-    where makeVar n = (("@" ++) . show $ n, ObjInfo Var CTemp (-1))
+    where makeVar n = Info (("@" ++) . show $ n, ObjInfo Var CTemp (-1))
 
 freshVars :: Int -> VarEnv [IVar]
 freshVars n = replicateM n freshVar
@@ -33,8 +33,9 @@ resetVars :: VarEnv ()
 resetVars = put ([], 0)
 
 collectUnuseVar :: IDecl -> VarEnv ()
-collectUnuseVar (IVarDecl (('@':varNum), _)) = do (reuse, num) <- get
-                                                  put (sort $ (read varNum):reuse, num)
+collectUnuseVar (IVarDecl (Info (('@':varNum), _)))
+    = do (reuse, num) <- get
+         when (not $ read varNum `elem` reuse) (put (sort $ (read varNum):reuse, num))
 collectUnuseVar _ = return ()
 
 collectUnuseVars :: [IDecl] -> VarEnv ()
@@ -51,16 +52,17 @@ showIProgram :: IProgram -> String
 showIProgram prog = concat $ intersperse "\n" (map show prog)
 
 convDecl :: A_EDecl -> VarEnv IDecl
-convDecl (A_Decl var)              = return (IVarDecl var)
-convDecl (A_Func _ var parms body) = do (_, stmts) <- resetVars >> convStmt body
-                                        let [cmpdStmt] = stmts
-                                        return $ IFunDecl var parms cmpdStmt
+convDecl (A_Decl var)              = return (IVarDecl $ Info var)
+convDecl (A_Func _ var parms body)
+    = do (_, stmts) <- resetVars >> convStmt body
+         let [cmpdStmt] = stmts
+         return $ IFunDecl (Info var) (map Info parms) cmpdStmt
 
 
 convStmt :: A_Stmt -> VarEnv ([IVar], [IStmt])
 convStmt (A_EmptyStmt)  = return ([], [IEmpty])
 convStmt (A_ExprStmt e) = convExpr e
-convStmt (A_DeclStmt _) = error "unexpected A_DeclStmt"
+convStmt (A_DeclStmt _) = error "This error should never happen."
 convStmt (A_IfStmt _ cond tr fls)
     = do (varsCond, makeCond)   <- convExpr cond
          (varsTrue, stmtTrue)   <- convStmt tr
@@ -71,7 +73,7 @@ convStmt (A_WhileStmt _ cond body)
     = do (varsCond, makeCond)   <- convExpr cond
          (varsBody, stmtBody)   <- convStmt body
          return (varsCond ++ varsBody,
-                 makeCond ++ [IWhile (result varsCond) stmtBody] ++ makeCond)
+                 makeCond ++ [IWhile (result varsCond) (stmtBody ++ makeCond)])
 convStmt (A_ReturnStmt _ e)
     = do (vars, stmts) <- convExpr e
          return (vars, stmts ++ [IReturn (result vars)])
@@ -84,7 +86,7 @@ convStmt (A_CompoundStmt stmts)
 foldCmpdStmt :: ([IDecl], [IStmt]) -> A_Stmt -> VarEnv ([IDecl], [IStmt])
 foldCmpdStmt (idecl, istmt) stmt
     = case stmt of
-        (A_DeclStmt l) -> return (idecl ++ map IVarDecl l, istmt)
+        (A_DeclStmt l) -> return (idecl ++ map (IVarDecl . Info) l, istmt)
         otherStmt      -> do (vars, stmts) <- convStmt otherStmt
                              return (idecl ++ map IVarDecl (extractTemp vars),
                                      istmt ++ stmts)
@@ -92,7 +94,7 @@ foldCmpdStmt (idecl, istmt) stmt
 {- 残念ながらプログラム上で宣言された変数も convExpr の結果に含まれてしまう．
    CompoundStmt の decl に入ってしまうと困るので削除する．-}
 extractTemp :: [IVar] -> [IVar]
-extractTemp = filter ((== '@') . head . fst)
+extractTemp = filter ((== '@') . head . fst . info)
 
 
 {- 与えられた Expr の最終的な結果が格納される変数を
@@ -107,8 +109,8 @@ convExpr (A_AssignExpr _ dest src)
                                               stmts1 ++ stmts2
                                              ++ [IWrite (result vars1)  (result vars2)])
         (A_IdentExpr vdst) -> do (vars, stmts) <- convExpr src
-                                 return (vars,
-                                         stmts ++ [ILet vdst (IVarExp $ result vars)])
+                                 return (vars, stmts ++
+                                         [ILet (Info vdst) (IVarExp $ result vars)])
 convExpr (A_UnaryPrim _ "*" e)
     = do dest <- freshVar
          (vars, stmts) <- convExpr e
@@ -153,22 +155,30 @@ convExpr (A_ApplyFunc _ func args)
                   let resArgs = map (head . fst) res
                       resVars = concat $ map fst res
                       resStmt = concat $ map snd res
-                  return (dest:resVars, resStmt ++ [ICall dest func resArgs])
+                  return (dest:resVars, resStmt ++ [ICall dest (Info func) resArgs])
 convExpr (A_MultiExpr es)
     = do res <- mapM convExpr es
          -- 最後の結果が先頭にならないといけないので reverse
          return (concat . reverse $ map fst res, concat $ map snd res)
 convExpr (A_Constant n)
     = freshVar >>= (\dest -> return ([dest], [ILet dest (IInt n)]))
-convExpr (A_IdentExpr i) = return ([i], [])
+convExpr (A_IdentExpr i) = if isArray i
+                           then do v <- freshVar
+                                   return $ (v:[Info i], [ILet v (IAddr (Info i))])
+                           else return ([Info i], [])
 
+isArray :: A_Idnentifier -> Bool
+isArray (_, (ObjInfo _ ty _))
+    = case ty of
+        (CArray _ _) -> True
+        _            -> False
 
 pointerCalc :: String -> A_Expr -> A_Expr -> VarEnv ([IVar], [IStmt])
 pointerCalc op e1 e2
     = do (vars1, stmts1) <- convExpr e1
          (vars2, stmts2) <- convExpr e2
          (dest:v1:v2:[]) <- freshVars 3
-         return (dest:(vars1 ++ vars2), stmts1 ++ stmts2 ++
+         return (dest:v1:v2:(vars1 ++ vars2), stmts1 ++ stmts2 ++
                  [ILet v1 (IInt 4),
                   ILet v2 (IAop "*" v1 (result vars2)),
                   ILet dest $ IAop op (result vars1) v2])
