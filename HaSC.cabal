@@ -22,6 +22,7 @@ library
                , parsec     == 3.1.9
                , mtl        == 2.2.1
                , containers == 0.5.6.2
+               , transformers == 0.4.2.0
   exposed-modules:
     Parser
     AST
@@ -29,6 +30,7 @@ library
     Environment
     AnalyzedAST
     ErrorMsg
+    ObjInfo
     IntermedSyntax
     ASTtoIntermed
     GenCode

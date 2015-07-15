@@ -10,6 +10,7 @@ import Control.Monad.Writer
 
 import AST
 import Environment
+import ObjInfo
 import AnalyzedAST
 
 getEnvEmpty :: StateEnv a -> Env
@@ -17,10 +18,10 @@ getEnvEmpty s = M.map sort $ fst (runWriter $ execStateT s M.empty)
 
 runWithEnv :: StateEnv a -> a
 runWithEnv s = fst (runWriter (evalStateT s $ M.fromList
-                               [(0, [("a", (ObjInfo Var CInt 0)),
-                                     ("b", (ObjInfo Func (CFun CInt [CPointer CInt]) 0))]),
-                                (1, [("c", (ObjInfo Parm (CPointer CInt) 1))]),
-                                (2, [("d", (ObjInfo Var CInt 2))])]))
+                               [(0, [(ObjInfo "a" Var CInt 0),
+                                     (ObjInfo "b" Func (CFun CInt [CPointer CInt]) 0)]),
+                                (1, [(ObjInfo "c" Parm (CPointer CInt) 1)]),
+                                (2, [(ObjInfo "d" Var CInt 2)])]))
 
 u :: SourcePos
 u = newPos "test" 0 0
@@ -42,19 +43,19 @@ spec = do
   describe "Environment" $ do
     it "collect global decralations" $ do
       (getEnvEmpty . collectGlobal) testcase1 `shouldBe`
-             M.fromList [(0, [("a", (ObjInfo Var CInt 0)),
-                              ("b", (ObjInfo Var (CPointer CInt) 0)),
-                              ("c", (ObjInfo Var (CArray CInt 10) 0)),
-                              ("d", (ObjInfo Var (CArray (CPointer CInt) 20) 0))])]
+             M.fromList [(0, [(ObjInfo "a" Var CInt 0),
+                              (ObjInfo "b" Var (CPointer CInt) 0),
+                              (ObjInfo "c" Var (CArray CInt 10) 0),
+                              (ObjInfo "d" Var (CArray (CPointer CInt) 20) 0)])]
       (getEnvEmpty . collectGlobal) testcase2 `shouldBe`
-             M.fromList [(0, [("a", (ObjInfo FuncProto
-                                             (CFun CInt [CInt, CPointer CInt]) 0))])]
+             M.fromList [(0, [(ObjInfo "a" FuncProto
+                                           (CFun CInt [CInt, CPointer CInt]) 0)])]
       (getEnvEmpty . collectGlobal) testcase3 `shouldBe`
-             M.fromList [(0, [("a", (ObjInfo Func (CFun CInt []) 0))])]
+             M.fromList [(0, [(ObjInfo "a" Func (CFun CInt []) 0)])]
 
     it "find declaration" $ do
-      (runWithEnv $ findFromJust u 2 "d") `shouldBe` (ObjInfo Var CInt 2)
-      (runWithEnv $ findFromJust u 2 "c") `shouldBe` (ObjInfo Parm (CPointer CInt) 1)
-      (runWithEnv $ findFromJust u 1 "b") `shouldBe`
-             (ObjInfo Func (CFun CInt [CPointer CInt]) 0)
-      evaluate (runWithEnv $ findFromJust u 1 "e") `shouldThrow` anyException
+      (runWithEnv $ findObjFromJust u 2 "d") `shouldBe` (ObjInfo "d" Var CInt 2)
+      (runWithEnv $ findObjFromJust u 2 "c") `shouldBe` (ObjInfo "c" Parm (CPointer CInt) 1)
+      (runWithEnv $ findObjFromJust u 1 "b") `shouldBe`
+             (ObjInfo "b" Func (CFun CInt [CPointer CInt]) 0)
+      evaluate (runWithEnv $ findObjFromJust u 1 "e") `shouldThrow` anyException

@@ -9,6 +9,7 @@ import Control.Monad.State.Strict
 
 import AST
 import Environment
+import ObjInfo
 import AnalyzedAST
 import ErrorMsg
 
@@ -33,13 +34,12 @@ analyzeEDecl (Decl p dcl_ty)
     = return $ map (A_Decl . makeVarInfo p global_lev) dcl_ty
 analyzeEDecl (FuncPrototype _ _ _ _) = return []
 analyzeEDecl (FuncDef p _ name args stmt)
-    = do {
-        let { parms = map (makeParmInfo p) args; };
-        a_stmt <- withEnv param_lev
-                          (mapM_ (extendEnv p param_lev) parms)
-                          (analyzeStmt func_lev stmt);
-        func   <- findFromJust p global_lev name;
-        return $ [A_Func p (name, func) parms a_stmt]; }
+    = do let parms = map (makeParmInfo p) args
+         a_stmt <- withEnv param_lev
+                           (mapM_ (extendEnv p param_lev) parms)
+                           (analyzeStmt func_lev stmt)
+         func   <- findObjFromJust p global_lev name
+         return $ [A_Func p func parms a_stmt]
 
 analyzeStmt :: Level -> Stmt -> StateEnv A_Stmt
 analyzeStmt lev (CompoundStmt _ stmts)
@@ -59,15 +59,13 @@ analyzeStmt lev (RetVoidStmt p)     = return $ A_RetVoidStmt p
 
 analyzeIf :: Level -> Stmt -> StateEnv A_Stmt
 analyzeIf lev (IfStmt p cond true false)
-    = do {
-        a_cond <- analyzeExpr lev cond;
-        liftM2 (A_IfStmt p a_cond) (analyzeStmt lev true) (analyzeStmt lev false); }
+    = do a_cond <- analyzeExpr lev cond
+         liftM2 (A_IfStmt p a_cond) (analyzeStmt lev true) (analyzeStmt lev false)
 
 analyzeWhile :: Level -> Stmt -> StateEnv A_Stmt
 analyzeWhile lev (WhileStmt p cond body)
-    = do {
-        a_cond <- analyzeExpr lev cond;
-        liftM (A_WhileStmt p a_cond) (analyzeStmt lev body); }
+    = do a_cond <- analyzeExpr lev cond
+         liftM (A_WhileStmt p a_cond) (analyzeStmt lev body)
 
 analyzeExpr :: Level -> Expr -> StateEnv A_Expr
 analyzeExpr lev (AssignExpr p e1 e2)
@@ -77,21 +75,17 @@ analyzeExpr lev (UnaryPrim p op e)
 analyzeExpr lev (BinaryPrim p op e1 e2)
     = liftM2 (A_BinaryPrim p op) (analyzeExpr lev e1) (analyzeExpr lev e2)
 analyzeExpr lev (ApplyFunc p name args)
-    = do {
-        funcInfo <- findFromJust p lev name;
-        a_args   <- mapM (analyzeExpr lev) args;
-        return $ A_ApplyFunc p (name, funcInfo) a_args; }
+    = do funcInfo <- findObjFromJust p lev name
+         a_args   <- mapM (analyzeExpr lev) args
+         return $ A_ApplyFunc p funcInfo a_args
 analyzeExpr lev (MultiExpr p es) = liftM A_MultiExpr (mapM (analyzeExpr lev) es)
 analyzeExpr lev (Constant p num)   = return $ A_Constant num
 analyzeExpr lev (IdentExpr p name)
-    = do {
-        info <- findFromJust p lev name;
-        case info of
-          (ObjInfo Func _ _)
-              -> error $ funcReferError p name
-          (ObjInfo FuncProto _ _)
-              -> error $ funcReferError p name
-          validInfo -> return $ A_IdentExpr (name, validInfo); }
+    = do info <- findObjFromJust p lev name
+         case info of
+           (ObjInfo _ Func _ _)      -> error $ funcReferError p name
+           (ObjInfo _ FuncProto _ _) -> error $ funcReferError p name
+           validInfo                 -> return $ A_IdentExpr validInfo
 
 
 {- typeCheck -}
@@ -100,16 +94,18 @@ typeCheck = mapM_ declTypeCheck
 
 declTypeCheck :: A_EDecl -> Check ()
 declTypeCheck (A_Decl _) = return ()
-declTypeCheck (A_Func p (name, info) args body)
+declTypeCheck (A_Func p info args body)
     = case getRetType info of
-        (Just ty) -> do retTy <- stmtTypeCheck (name, ty) body
-                        when (ty /= retTy) (fail $ invalidRetTypeError p name)
-        Nothing   -> fail $ invalidRetTypeError p name
+        (Just ty) -> do retTy <- stmtTypeCheck (objName info, ty) body
+                        when (ty /= retTy) (fail $ invalidRetTypeError p (objName info))
+        Nothing   -> fail $ invalidRetTypeError p (objName info)
     where
-      getRetType info = case ctype info of
+      getRetType info = case objCtype info of
                           (CFun retTy _) -> Just retTy
                           _              -> Nothing
 
+{- return の型が間違っている場合のエラーを検出・報告するために，
+   (関数名, 期待する返り値の型) というタプルを持ちまわる．-}
 stmtTypeCheck :: (Identifier, CType) -> A_Stmt -> Check CType
 stmtTypeCheck info@(name, retTy) = stmtTypeCheck'
     where
@@ -158,64 +154,63 @@ returnTypeCheck p (name, retTy) e
 
 exprTypeCheck :: A_Expr -> Check CType
 exprTypeCheck (A_AssignExpr p e1 e2)
-    = do {
-        checkAssignForm p e1;
-        ty1 <- exprTypeCheck e1;
-        ty2 <- exprTypeCheck e2;
-        if ty1 == ty2 then return ty1 else fail $ typeDiffError p "=" ty1 ty2; }
+    = do checkAssignForm p e1
+         ty1 <- exprTypeCheck e1
+         ty2 <- exprTypeCheck e2
+         if ty1 == ty2
+         then return ty1
+         else fail $ typeDiffError p "=" ty1 ty2
 exprTypeCheck (A_UnaryPrim p op e)
     = case op of
         "&" -> addrTypeChcek p e
         "*" -> pointerTypeCheck p e
 exprTypeCheck (A_BinaryPrim p op e1 e2)
     | op `elem` ["&&", "||", "*", "/"]
-        = do {
-            ty1 <- exprTypeCheck e1;
-            ty2 <- exprTypeCheck e2;
-            if ty1 == CInt && ty2 == CInt
-            then return CInt
-            else fail $ binaryTypeError p op ty1 ty2; }
+        = do ty1 <- exprTypeCheck e1
+             ty2 <- exprTypeCheck e2
+             if ty1 == CInt && ty2 == CInt
+             then return CInt
+             else fail $ binaryTypeError p op ty1 ty2
     | op `elem` ["==", "!=", "<", "<=", ">", ">="]
-        = do {
-            ty1 <- exprTypeCheck e1;
-            ty2 <- exprTypeCheck e2;
-            if ty1 == ty2
-            then return ty1
-            else fail $ typeDiffError p op ty1 ty2; }
+        = do ty1 <- exprTypeCheck e1
+             ty2 <- exprTypeCheck e2
+             if ty1 == ty2
+             then return ty1
+             else fail $ typeDiffError p op ty1 ty2
     | op `elem` ["+", "-"]
-        = do {
-            ty1 <- exprTypeCheck e1;
-            ty2 <- exprTypeCheck e2;
-            case (ty1, ty2) of
-              (CInt, CInt)        -> return CInt
-              (CPointer ty, CInt) -> return $ CPointer ty
-              (CArray ty _, CInt) -> return $ CPointer ty
-              _                   -> fail $ invalidCalcError p op ty1 ty2; }
-exprTypeCheck (A_ApplyFunc p (name, info) args)
-    = do {
-        argTypes <- mapM exprTypeCheck args;
-        case info of
-          (ObjInfo Func (CFun ty parms) _) -> if argTypes == parms
-                                              then return ty
-                                              else fail $ argumentError p name
-          _  -> fail $ funcReferError p name }
-exprTypeCheck (A_MultiExpr es) = liftM last (mapM exprTypeCheck es)
-exprTypeCheck (A_Constant n)   = return CInt
-exprTypeCheck (A_IdentExpr (name, info))  = return $ ctype info
+        = do ty1 <- exprTypeCheck e1
+             ty2 <- exprTypeCheck e2
+             case (ty1, ty2) of
+               (CInt, CInt)        -> return CInt
+               (CPointer ty, CInt) -> return $ CPointer ty
+               (CArray ty _, CInt) -> return $ CPointer ty
+               _                   -> fail $ invalidCalcError p op ty1 ty2
+exprTypeCheck (A_ApplyFunc p info args)
+    = do argTypes <- mapM exprTypeCheck args
+         case info of
+           (ObjInfo nm Func (CFun ty parms) _)
+               -> if argTypes == parms
+                  then return ty
+                  else fail $ argumentError p nm
+           _   -> fail $ funcReferError p (objName info)
+exprTypeCheck (A_MultiExpr es)    = liftM last (mapM exprTypeCheck es)
+exprTypeCheck (A_Constant n)      = return CInt
+exprTypeCheck (A_IdentExpr info)  = return $ objCtype info
 
 
 addrTypeChcek :: SourcePos -> A_Expr -> Check CType
-addrTypeChcek p e = do
-  checkAddressReferForm p e
-  ty <- exprTypeCheck e
-  if ty == CInt then return (CPointer CInt) else fail $ unaryError p "&" CInt ty
+addrTypeChcek p e = do checkAddressReferForm p e
+                       ty <- exprTypeCheck e
+                       if ty == CInt
+                       then return (CPointer CInt)
+                       else fail $ unaryError p "&" CInt ty
 
 pointerTypeCheck :: SourcePos -> A_Expr -> Check CType
-pointerTypeCheck p e = do
-  ty <- exprTypeCheck e
-  case ty of
-    (CPointer ty') -> return ty'
-    _              -> fail $ unaryError p "*" (CPointer CInt) ty
+pointerTypeCheck p e
+    = do ty <- exprTypeCheck e
+         case ty of
+           (CPointer ty') -> return ty'
+           _              -> fail $ unaryError p "*" (CPointer CInt) ty
 
 {- Utility -}
 
@@ -224,7 +219,7 @@ checkAddressReferForm _ (A_IdentExpr _) = return ()
 checkAddressReferForm p _ = fail $ addrFormError p
 
 checkAssignForm :: SourcePos -> A_Expr -> Check ()
-checkAssignForm p (A_IdentExpr (name, ObjInfo kind ty _))
+checkAssignForm p (A_IdentExpr (ObjInfo nm kind ty _))
     = case (kind, ty) of
         (Var, (CArray _ _))  -> fail $ assignError p
         (Var, _)             -> return ()
@@ -233,7 +228,7 @@ checkAssignForm p (A_IdentExpr (name, ObjInfo kind ty _))
         (Func, _)            -> fail $ assignError p
         (FuncProto, _)       -> fail $ assignError p
 checkAssignForm p (A_UnaryPrim _ "*" _) = return ()
-checkAssignForm p _ = fail $ assignError p
+checkAssignForm p _                     = fail $ assignError p
 
 wellTyped :: Check CType
 wellTyped = return CVoid

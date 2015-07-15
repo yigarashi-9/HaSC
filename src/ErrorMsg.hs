@@ -1,7 +1,8 @@
 module ErrorMsg where
 
-import Text.Parsec.Pos
+import ObjInfo
 import AnalyzedAST
+import Text.Parsec.Pos
 
 errorHeader :: SourcePos -> String
 errorHeader pos = "\n*** Compilation Error ***\n" ++ showSourcePos pos ++ "\n"

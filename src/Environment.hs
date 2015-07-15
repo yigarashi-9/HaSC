@@ -1,6 +1,7 @@
 module Environment where
 
 import qualified Data.Map as M
+import           Data.List
 import           Text.Parsec.Pos
 import           Control.Applicative
 import           Control.Monad
@@ -8,18 +9,19 @@ import           Control.Monad.Writer
 import           Control.Monad.State.Strict
 
 import AST
+import ObjInfo
 import AnalyzedAST
 import ErrorMsg
 
 
 type StateEnv = StateT Env (Writer [String])
-type Env      = M.Map Level [(Identifier, ObjInfo)]
+type Env      = M.Map Level [ObjInfo]
 
 runEnv :: StateEnv a -> Env -> (a, [String])
 runEnv s env = runWriter (evalStateT s env)
 
 initialEnv :: Env
-initialEnv = M.fromList [(0, [("print", (ObjInfo Func (CFun CVoid [CInt]) 0))])]
+initialEnv = M.fromList [(0, [ObjInfo "print" Func (CFun CVoid [CInt]) 0])]
 
 
 {- レベルを表す数値 -}
@@ -45,73 +47,70 @@ collectGlobal = mapM_ collectEdecl
 collectEdecl :: EDecl -> StateEnv ()
 collectEdecl (Decl p l) = mapM_ (extendEnv p global_lev) (map (makeVarInfo p global_lev) l)
 collectEdecl (FuncPrototype p ty nm args)
-    = do {
-        let { funcInfo = makeFuncInfo ty args FuncProto } ;
-        info <- findAtTheLevel global_lev nm;
-        case info of
-          (Just i) -> if i == funcInfo -- 型情報が同じ宣言は通す
-                      then return ()
-                      else error $ protoTypeError p nm
-          Nothing  -> addEnv global_lev (nm, funcInfo); }
-collectEdecl (FuncDef p dcl_ty name args stmt)
-    = do {
-        let { funcInfo = makeFuncInfo dcl_ty args Func; };
-        maybeInfo <- findAtTheLevel global_lev name;
-        case maybeInfo of
-          (Just info) -> case info of
-                           (ObjInfo FuncProto ty _)
-                               -> if ty == ctype funcInfo
-                                  then addEnv global_lev (name, funcInfo)
-                                  else error $ funcDeclError p name
-                           (ObjInfo Func _ _) -> error $ funcDeclError p name
-                           _                  -> error $ duplicateError p name
-          Nothing  -> addEnv global_lev (name, funcInfo); }
+    = do let funcInfo = makeFuncInfo nm ty args FuncProto
+         info <- findAtTheLevel global_lev nm
+         case info of
+           (Just i) -> if i == funcInfo -- 型情報が同じ宣言は通す
+                       then return ()
+                       else error $ protoTypeError p nm
+           Nothing  -> addEnv global_lev funcInfo
+collectEdecl (FuncDef p dcl_ty nm args stmt)
+    = do let funcInfo = makeFuncInfo nm dcl_ty args Func
+         maybeInfo <- findAtTheLevel global_lev nm
+         case maybeInfo of
+           (Just info) -> case info of
+                            (ObjInfo _ FuncProto ty _)
+                                -> if ty == objCtype funcInfo
+                                   then addEnv global_lev funcInfo
+                                   else error $ funcDeclError p nm
+                            (ObjInfo _ Func _ _) -> error $ funcDeclError p nm
+                            _                    -> error $ duplicateError p nm
+           Nothing    -> addEnv global_lev funcInfo
 
 
-makeFuncInfo :: DeclType -> [(DeclType, Identifier)] -> Kind -> ObjInfo
-makeFuncInfo ty args kind = ObjInfo kind (CFun retTy argsTy) global_lev
-    where retTy  = convType ty
-          argsTy = map (convType . fst) args
+makeFuncInfo :: Identifier -> DeclType -> [(DeclType, Identifier)] -> Kind -> ObjInfo
+makeFuncInfo nm ty args kind = ObjInfo nm kind funTy global_lev
+    where funTy = CFun (convType ty) (map (convType . fst) args)
 
-makeVarInfo :: SourcePos -> Level -> (DeclType, DirectDecl) -> (Identifier, ObjInfo)
+makeVarInfo :: SourcePos -> Level -> (DeclType, DirectDecl) -> ObjInfo
 makeVarInfo p lev (dcl_ty, dcl)
     = let ty = convType dcl_ty in
       if containVoid ty
       then error $ voidError p
       else case dcl of
-             (Variable _ name)      -> (name, ObjInfo Var ty lev)
-             (Sequence _ name size) -> (name, ObjInfo Var (CArray ty size) lev)
+             (Variable _ nm)      -> ObjInfo nm Var ty lev
+             (Sequence _ nm size) -> ObjInfo nm Var (CArray ty size) lev
 
-makeParmInfo :: SourcePos -> (DeclType, Identifier) -> (Identifier, ObjInfo)
-makeParmInfo p (dcl_ty, name)
+makeParmInfo :: SourcePos -> (DeclType, Identifier) -> ObjInfo
+makeParmInfo p (dcl_ty, nm)
     = let ty = convType dcl_ty in
       if containVoid ty
       then error $ voidError p
-      else (name, ObjInfo Parm ty param_lev)
+      else ObjInfo nm Parm ty param_lev
 
 
 {- 重複を調べずに与えられた info を環境に追加する -}
-addEnv :: Level -> (Identifier, ObjInfo) -> StateEnv ()
-addEnv lev info_entry = liftM (M.insertWith (++) lev [info_entry]) get >>= put
+addEnv :: Level -> ObjInfo -> StateEnv ()
+addEnv lev info_entry = do env <- get
+                           put $ M.insertWith (++) lev [info_entry] env
 
 
 {- 重複を調べてから環境を拡張する -}
-extendEnv :: SourcePos -> Level -> (Identifier, ObjInfo) -> StateEnv ()
-extendEnv p lev (name, info)
-    = do {
-        dupInfo <- findAtTheLevel lev name;
-        case dupInfo of
-          Nothing  -> tellShadowing p name lev >> addEnv lev (name, info)
-          (Just _) -> error $ duplicateError p name; }
+extendEnv :: SourcePos -> Level -> ObjInfo -> StateEnv ()
+extendEnv p lev info
+    = do let nm = objName info
+         dupInfo <- findAtTheLevel lev nm
+         case dupInfo of
+           Nothing  -> tellShadowing p nm lev >> addEnv lev info
+           (Just _) -> error $ duplicateError p nm
 
 
 tellShadowing :: SourcePos -> Identifier -> Level -> StateEnv ()
-tellShadowing p name baseLev
-    = do {
-        hiddenInfo <- find (baseLev-1) name;
-        case hiddenInfo of
-          (Just _) -> tell $ [warningMsg p name]
-          Nothing  -> return (); }
+tellShadowing p nm baseLev
+    = do hiddenInfo <- findObj (baseLev-1) nm
+         case hiddenInfo of
+           (Just _) -> tell $ [warningMsg p nm]
+           Nothing  -> return ()
 
 deleteLevel :: Level -> StateEnv ()
 deleteLevel lev = (liftM (M.delete lev) get) >>= put
@@ -124,21 +123,28 @@ withEnv :: Level       -- エントリーポイントのレベル
 withEnv lev mkenv body = mkenv >> body <* deleteLevel lev
 
 
-find :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
-find lev name = if lev <= -1 then return Nothing
-                else do {
-                       env <- get;
-                       case (M.lookup lev env >>= lookup name) of
-                         (Just info) -> return $ Just info
-                         Nothing     -> find (lev-1) name; }
+findObj :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
+findObj lev nm = if lev <= -1
+                 then return Nothing
+                 else do env <- get;
+                         case (M.lookup lev env >>= lookupObj nm) of
+                           (Just info) -> return $ Just info
+                           Nothing     -> findObj (lev-1) nm
 
-findFromJust :: SourcePos -> Level -> Identifier -> StateEnv ObjInfo
-findFromJust p lev name
-    = do {
-        maybeInfo <- find lev name;
-        case maybeInfo of
-          (Just info) -> return info
-          Nothing     -> error $ undefinedError p name; }
+findObjFromJust :: SourcePos -> Level -> Identifier -> StateEnv ObjInfo
+findObjFromJust p lev nm
+    = do maybeInfo <- findObj lev nm
+         case maybeInfo of
+           (Just info) -> return info
+           Nothing     -> error $ undefinedError p nm
 
 findAtTheLevel :: Level -> Identifier -> StateEnv (Maybe ObjInfo)
-findAtTheLevel lev name = liftM (\e -> M.lookup lev e >>= lookup name) get
+findAtTheLevel lev nm = liftM (\e -> M.lookup lev e >>= lookupObj nm) get
+
+lookupObj :: Identifier -> [ObjInfo] -> Maybe ObjInfo
+lookupObj nm l = find ((== nm) . objName) l
+
+convType :: DeclType -> CType
+convType (DeclPointer ty) = CPointer (convType ty)
+convType (DeclInt)        = CInt
+convType (DeclVoid)       = CVoid
