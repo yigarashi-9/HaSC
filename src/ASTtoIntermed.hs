@@ -113,7 +113,7 @@ convStmt (A_WhileStmt _ cond body)
 convStmt (A_ReturnStmt _ e)
     = do (vars, stmts) <- convExpr e
          return (vars, stmts ++ [IReturn (result vars)])
-convStmt (A_RetVoidStmt _) = return ([], [])
+convStmt (A_RetVoidStmt _) = return ([], [IRetVoid])
 convStmt (A_CompoundStmt stmts)
     = do (decls, stmts) <- foldM foldCmpdStmt ([], []) stmts
          collectUnuseVars decls

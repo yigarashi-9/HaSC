@@ -36,5 +36,6 @@ data ICode = ILabel     Label
            | IJump      Label
            | ICall      IVar IVar [IVar]  -- ICall dest func [arg]
            | IReturn    IVar
+           | IRetVoid
            | IPrint     IVar
              deriving(Show, Eq, Ord)

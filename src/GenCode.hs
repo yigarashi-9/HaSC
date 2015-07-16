@@ -99,6 +99,12 @@ genStmt (IReturn ivar)
                    insertWS ["lw", "$fp", "0($sp)"],
                    insertWS ["addi", "$sp", "$sp", show (-frameSize)],
                    insertWS ["jr", "$ra"]]
+genStmt (IRetVoid)
+    = do frameSize <- getCurFrameSize
+         return $ [insertWS ["lw", "$ra", "4($sp)"],
+                   insertWS ["lw", "$fp", "0($sp)"],
+                   insertWS ["addi", "$sp", "$sp", show (-frameSize)],
+                   insertWS ["jr", "$ra"]]
 genStmt (IPrint ivar)      = return $ [insertWS ["li", (v 0), show 1],
                                        insertWS ["lw", (a 0), show ivar],
                                        insertWS ["syscall"]]
@@ -205,8 +211,8 @@ assignFpWords n = do
 assignGpWords :: Int -> AddrEnv IVarAddr
 assignGpWords n = do
   (fp, gp, asc) <- get
-  let newGp = gp + n * wordSize
-  put (fp, newGp, asc) >> return (Addr $ Gp (newGp - wordSize))
+  let newGp = gp - n * wordSize
+  put (fp, newGp, asc) >> return (Addr $ Gp (newGp + wordSize))
 
 assignWord :: (Int -> AddrEnv IVarAddr) -> AddrEnv IVarAddr
 assignWord f = f 1
@@ -279,6 +285,7 @@ assignIStmt (ICall dest f args)   = liftM3 ICall (getAddr dest)
                                                  (return f)
                                                  (mapM getAddr args)
 assignIStmt (IReturn ivar)        = liftM IReturn (getAddr ivar)
+assignIStmt (IRetVoid)            = return IRetVoid
 assignIStmt (IPrint ivar)         = liftM IPrint (getAddr ivar)
 assignIStmt (ICompound decl stmt) = do fp <- getFp
                                        decl' <- mapM (setAddr assignFpWords) decl
