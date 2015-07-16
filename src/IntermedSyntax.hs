@@ -46,6 +46,7 @@ data IStmt = IEmpty
            | IWhile    IVar [IStmt]
            | ICall     IVar IVar [IVar]  -- ICall dest func [arg]
            | IReturn   IVar
+           | IRetVoid
            | IPrint    IVar
            | ICompound [IDecl] [IStmt]
              deriving(Show, Eq, Ord)
