@@ -133,18 +133,16 @@ mipsArithOp "+" = [insertWS ["add", (t 0), (t 1), (t 2)]]
 mipsArithOp "-" = [insertWS ["sub", (t 0), (t 1), (t 2)]]
 mipsArithOp "*" = [insertWS ["mult", (t 1), (t 2)],
                    insertWS ["mflo", (t 0)]]
-mipsArithOp "*" = [insertWS ["div", (t 1), (t 2)],
+mipsArithOp "/" = [insertWS ["div", (t 1), (t 2)],
                    insertWS ["mflo", (t 0)]]
 
 mipsRelOp :: String -> LabelEnv [String]
 mipsRelOp "<"  = return $ [insertWS ["slt", (t 0), (t 1), (t 2)]]
 mipsRelOp ">"  = return $ [insertWS ["slt", (t 0), (t 2), (t 1)]]
-mipsRelOp "<=" = return $ [insertWS ["sub", (t 2), (t 2), (t 1)],
-                           insertWS ["subi", (t 2), show (-1)],
-                           insertWS ["slt", (t 0), "$zero", (t 2)]]
-mipsRelOp ">=" = return $ [insertWS ["sub", (t 1), (t 1), (t 2)],
-                           insertWS ["subi", (t 1), show (-1)],
-                           insertWS ["slt", (t 0), "$zero", (t 1)]]
+mipsRelOp "<=" = return $ [insertWS ["addi", (t 2), show 1],
+                           insertWS ["slt", (t 0), (t 1), (t 2)]]
+mipsRelOp ">=" = return $ [insertWS ["addi", (t 1), show 1],
+                           insertWS ["slt", (t 0), (t 2), (t 1)]]
 mipsRelOp "==" = do (l0:l1:[]) <- freshLabels 2
                     return $ [insertWS ["beq", (t 1), (t 2), l0],
                               insertWS ["li", (t 0), show 0],
