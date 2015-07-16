@@ -188,7 +188,7 @@ exprTypeCheck (A_BinaryPrim p op e1 e2)
             ty1 <- exprTypeCheck e1;
             ty2 <- exprTypeCheck e2;
             if ty1 == ty2
-            then return ty1
+            then return CInt
             else fail $ typeDiffError p op ty1 ty2; }
     | op `elem` ["+", "-"]
         = do {

@@ -105,7 +105,7 @@ convExpr (A_AssignExpr _ dest src)
     = case dest of
         (A_UnaryPrim _ "*" dst) -> do (vars1, stmts1) <- convExpr dst
                                       (vars2, stmts2) <- convExpr src
-                                      return (vars1 ++ vars2,
+                                      return (vars2 ++ vars1,
                                               stmts1 ++ stmts2
                                              ++ [IWrite (result vars1)  (result vars2)])
         (A_IdentExpr vdst) -> do (vars, stmts) <- convExpr src
