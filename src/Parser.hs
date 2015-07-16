@@ -155,16 +155,8 @@ compoundStmt :: Parser [Stmt]
 compoundStmt = braces
                (do
                  decls <- many $ liftM2 (,) getPosition (try decl)
-                 stmts <- liftM flattenCompoundStmt (many $ try stmt)
+                 stmts <- many $ try stmt
                  return $ (map (uncurry DeclStmt) decls) ++ stmts)
-
-flattenCompoundStmt :: [Stmt] -> [Stmt]
-flattenCompoundStmt = foldr flatten []
-    where flatten s acc =
-              case s of
-                (CompoundStmt _ stmts) -> stmts ++ acc
-                stmt                   -> stmt:acc
-
 
 ifStmt :: Parser Stmt
 ifStmt = do
