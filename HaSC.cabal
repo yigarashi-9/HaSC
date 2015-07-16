@@ -33,7 +33,7 @@ library
     ObjInfo
     IntermedSyntax
     ASTtoIntermed
-    GenCode
+
   ghc-options:   -Wall
 
 executable HaSC

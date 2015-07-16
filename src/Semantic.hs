@@ -39,7 +39,15 @@ analyzeEDecl (FuncDef p _ name args stmt)
                            (mapM_ (extendEnv p param_lev) parms)
                            (analyzeStmt func_lev stmt)
          func   <- findObjFromJust p global_lev name
-         return $ [A_Func p func parms a_stmt]
+         if name == "main" && objCtype func == CFun CInt []
+         then return $ [A_Func p func parms (addReturn a_stmt)]
+         else return $ [A_Func p func parms a_stmt]
+
+addReturn :: A_Stmt -> A_Stmt
+addReturn (A_CompoundStmt stmts) = A_CompoundStmt (stmts ++
+                                                   [A_ReturnStmt p (A_Constant 0)])
+    where p = newPos "hoge" 0 0
+addReturn _ = error "never happen"
 
 analyzeStmt :: Level -> Stmt -> StateEnv A_Stmt
 analyzeStmt lev (CompoundStmt _ stmts)
@@ -48,7 +56,7 @@ analyzeStmt lev (CompoundStmt _ stmts)
               (liftM A_CompoundStmt (mapM (analyzeStmt $ lev+1) stmts))
 analyzeStmt lev (DeclStmt p dcls)
     = let info = map (makeVarInfo p lev) dcls
-      in mapM_ (extendEnv p lev) info >> (return $ A_DeclStmt info)
+      in mapM_ (addEnv lev) info >> (return $ A_DeclStmt info)
 analyzeStmt _   (EmptyStmt _)       = return A_EmptyStmt
 analyzeStmt lev (ExprStmt _ e)      = liftM A_ExprStmt (analyzeExpr lev e)
 analyzeStmt lev s@(IfStmt _ _ _ _)  = analyzeIf lev s
