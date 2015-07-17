@@ -33,6 +33,8 @@ library
     ObjInfo
     IntermedSyntax
     ASTtoIntermed
+    MIPS.GenCode
+    MIPS.IntermedSyntax
 
   ghc-options:   -Wall
 

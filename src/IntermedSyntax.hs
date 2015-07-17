@@ -2,21 +2,8 @@ module IntermedSyntax where
 
 import ObjInfo
 
+type IVar     = ObjInfo
 type IProgram = [IDecl]
-
-data IVar  = Info  { info  :: ObjInfo }
-           | Const { const :: Integer }
-             deriving(Eq, Ord)
-
-instance Show IVar where
-    show (Info i)  = show i
-    show (Const n) = show n
-
-ivarName :: IVar -> String
-ivarName = objName . info
-
-ivarType :: IVar -> CType
-ivarType = objCtype . info
 
 data IDecl = IVarDecl IVar
            | IFunDecl IVar [IVar] [ICode]
@@ -26,6 +13,7 @@ type Label = String
 
 data ICode = ILabel     Label
            | ILet       IVar IVar
+           | ILi        IVar Integer
            | IAop       String IVar IVar IVar
            | IRelop     String IVar IVar IVar
            | IWrite     IVar IVar
