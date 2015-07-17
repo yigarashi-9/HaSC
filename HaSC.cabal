@@ -22,16 +22,20 @@ library
                , parsec     == 3.1.9
                , mtl        == 2.2.1
                , containers == 0.5.6.2
+               , transformers == 0.4.2.0
   exposed-modules:
-    Parser
-    AST
-    Semantic
-    Environment
-    AnalyzedAST
-    ErrorMsg
-    IntermedSyntax
-    ASTtoIntermed
-    GenCode
+    HaSC.Prim.Parser
+    HaSC.Prim.AST
+    HaSC.Prim.Semantic
+    HaSC.Prim.Environment
+    HaSC.Prim.AnalyzedAST
+    HaSC.Prim.ErrorMsg
+    HaSC.Prim.ObjInfo
+    HaSC.Prim.IntermedSyntax
+    HaSC.Prim.ASTtoIntermed
+    HaSC.MIPS.GenCode
+    HaSC.MIPS.IntermedSyntax
+
   ghc-options:   -Wall
 
 executable HaSC

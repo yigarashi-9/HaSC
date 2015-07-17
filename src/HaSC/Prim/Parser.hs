@@ -1,5 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
-module Parser where
+module HaSC.Prim.Parser where
 
 import           Text.Parsec
 import           Text.Parsec.String
@@ -11,7 +11,7 @@ import Control.Monad.Identity(Identity)
 import Control.Monad(liftM, liftM2, liftM3)
 import Control.Applicative((<*))
 
-import AST
+import HaSC.Prim.AST
 
 parseProgram :: String -> IO Program
 parseProgram fileName = parseFromFile smallC fileName >>= either report return

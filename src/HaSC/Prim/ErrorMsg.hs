@@ -1,7 +1,8 @@
-module ErrorMsg where
+module HaSC.Prim.ErrorMsg where
 
+import HaSC.Prim.ObjInfo
+import HaSC.Prim.AnalyzedAST
 import Text.Parsec.Pos
-import AnalyzedAST
 
 errorHeader :: SourcePos -> String
 errorHeader pos = "\n*** Compilation Error ***\n" ++ showSourcePos pos ++ "\n"

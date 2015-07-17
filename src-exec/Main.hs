@@ -1,8 +1,8 @@
 
-import Parser
-import Semantic
-import ASTtoIntermed
-import GenCode
+import HaSC.Prim.Parser
+import HaSC.Prim.Semantic
+import HaSC.Prim.ASTtoIntermed
+import HaSC.MIPS.GenCode
 
 import Control.Monad
 import Control.Exception
@@ -14,7 +14,7 @@ main :: IO ()
 main = catch (do (fileName:_) <- getArgs
                  ast <- parseProgram fileName
                  let (prog, _) = semanticAnalyze ast
-                 putStrLn (genCode . assignRelAddr . astToIntermed $ prog)) err
+                 putStrLn (mipsGenCode . assignRelAddr . astToIntermed $ prog)) err
     where
       err e = do
         hPutStrLn stderr $ show (e :: SomeException)
