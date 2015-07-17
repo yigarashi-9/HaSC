@@ -1,4 +1,4 @@
-module AST where
+module HaSC.Prim.AST where
 
 import Text.Parsec
 

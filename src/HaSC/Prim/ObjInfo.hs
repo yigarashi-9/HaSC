@@ -1,4 +1,4 @@
-module ObjInfo where
+module HaSC.Prim.ObjInfo where
 
 import Data.List
 

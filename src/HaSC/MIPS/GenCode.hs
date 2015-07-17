@@ -1,14 +1,14 @@
-module MIPS.GenCode where
+module HaSC.MIPS.GenCode where
 
 import Data.Maybe
 import Data.List
 import Control.Monad.State
 import Debug.Trace
 
-import AnalyzedAST
-import ObjInfo
-import IntermedSyntax
-import MIPS.IntermedSyntax
+import HaSC.Prim.AnalyzedAST
+import HaSC.Prim.ObjInfo
+import HaSC.Prim.IntermedSyntax
+import HaSC.MIPS.IntermedSyntax
 
 type MIPSCode  = String
 type MIPSTerms = [[String]]

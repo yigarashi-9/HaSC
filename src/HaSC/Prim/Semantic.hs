@@ -1,4 +1,4 @@
-module Semantic where
+module HaSC.Prim.Semantic where
 
 import qualified Data.Map as M
 import Text.Parsec.Pos
@@ -7,11 +7,11 @@ import Control.Monad
 import Control.Monad.Writer
 import Control.Monad.State.Strict
 
-import AST
-import Environment
-import ObjInfo
-import AnalyzedAST
-import ErrorMsg
+import HaSC.Prim.AST
+import HaSC.Prim.Environment
+import HaSC.Prim.ObjInfo
+import HaSC.Prim.AnalyzedAST
+import HaSC.Prim.ErrorMsg
 
 semanticAnalyze :: Program -> (A_Program, [String])
 semanticAnalyze prog = runEnv body initialEnv

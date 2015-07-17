@@ -1,7 +1,7 @@
-module AnalyzedAST where
+module HaSC.Prim.AnalyzedAST where
 
-import AST
-import ObjInfo
+import HaSC.Prim.AST
+import HaSC.Prim.ObjInfo
 import Text.Parsec.Pos
 
 {- オブジェクトの情報を収集するためのデータ型 -}

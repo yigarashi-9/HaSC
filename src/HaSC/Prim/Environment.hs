@@ -1,4 +1,4 @@
-module Environment where
+module HaSC.Prim.Environment where
 
 import qualified Data.Map as M
 import           Data.List
@@ -8,10 +8,10 @@ import           Control.Monad
 import           Control.Monad.Writer
 import           Control.Monad.State.Strict
 
-import AST
-import ObjInfo
-import AnalyzedAST
-import ErrorMsg
+import HaSC.Prim.AST
+import HaSC.Prim.ObjInfo
+import HaSC.Prim.AnalyzedAST
+import HaSC.Prim.ErrorMsg
 
 
 type StateEnv = StateT Env (Writer [String])

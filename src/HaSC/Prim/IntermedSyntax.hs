@@ -1,6 +1,6 @@
-module IntermedSyntax where
+module HaSC.Prim.IntermedSyntax where
 
-import ObjInfo
+import HaSC.Prim.ObjInfo
 
 type IVar     = ObjInfo
 type IProgram = [IDecl]
@@ -22,7 +22,7 @@ data ICode = ILabel     Label
            | IJumpTr    IVar Label
            | IJumpFls   IVar Label
            | IJump      Label
-           | ICall      IVar IVar [IVar]  -- ICall dest func [arg]
+           | ICall      IVar IVar [IVar]
            | IReturn    IVar
            | IRetVoid
            | IPrint     IVar

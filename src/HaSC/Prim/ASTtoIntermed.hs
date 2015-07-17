@@ -1,4 +1,4 @@
-module ASTtoIntermed where
+module HaSC.Prim.ASTtoIntermed where
 
 import Data.Maybe
 import Control.Monad
@@ -6,10 +6,10 @@ import Control.Monad.State
 import qualified Control.Monad.Trans.State as S
 import Data.List
 
-import Semantic
-import ObjInfo
-import AnalyzedAST
-import IntermedSyntax
+import HaSC.Prim.Semantic
+import HaSC.Prim.ObjInfo
+import HaSC.Prim.AnalyzedAST
+import HaSC.Prim.IntermedSyntax
 
 
 {- *****************************

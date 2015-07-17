@@ -1,8 +1,8 @@
 
-import Parser
-import Semantic
-import ASTtoIntermed
-import MIPS.GenCode
+import HaSC.Prim.Parser
+import HaSC.Prim.Semantic
+import HaSC.Prim.ASTtoIntermed
+import HaSC.MIPS.GenCode
 
 import Control.Monad
 import Control.Exception

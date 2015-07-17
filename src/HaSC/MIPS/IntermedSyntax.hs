@@ -1,4 +1,4 @@
-module MIPS.IntermedSyntax where
+module HaSC.MIPS.IntermedSyntax where
 
 type MProgram = [MDecl]
 

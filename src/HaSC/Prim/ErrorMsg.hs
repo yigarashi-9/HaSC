@@ -1,7 +1,7 @@
-module ErrorMsg where
+module HaSC.Prim.ErrorMsg where
 
-import ObjInfo
-import AnalyzedAST
+import HaSC.Prim.ObjInfo
+import HaSC.Prim.AnalyzedAST
 import Text.Parsec.Pos
 
 errorHeader :: SourcePos -> String
