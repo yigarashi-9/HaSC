@@ -2,14 +2,13 @@ module HaSC.Prim.IntermedSyntax where
 
 import HaSC.Prim.ObjInfo
 
-type IVar     = ObjInfo
 type IProgram = [IDecl]
+type IVar     = ObjInfo
+type Label = String
 
 data IDecl = IVarDecl IVar
            | IFunDecl IVar [IVar] [ICode]
              deriving(Show, Eq, Ord)
-
-type Label = String
 
 data ICode = ILabel     Label
            | ILet       IVar IVar

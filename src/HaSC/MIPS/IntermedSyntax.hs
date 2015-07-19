@@ -1,6 +1,7 @@
 module HaSC.MIPS.IntermedSyntax where
 
 type MProgram = [MDecl]
+type Label = String
 
 data MVar  = Fp Int
            | Gp Int
@@ -14,8 +15,6 @@ data MDecl = MVarDecl MVar
            | MFunDecl Int String [MVar] [MCode]
              deriving(Show, Eq, Ord)
 
-type Label = String
-
 data MCode = MLabel     Label
            | MLi        MVar Integer
            | MLet       MVar MVar
@@ -27,7 +26,7 @@ data MCode = MLabel     Label
            | MJumpTr    MVar Label
            | MJumpFls   MVar Label
            | MJump      Label
-           | MCall      MVar String [MVar]  -- MCall dest func [arg]
+           | MCall      MVar String [MVar]
            | MReturn    MVar
            | MRetVoid
            | MPrint     MVar
