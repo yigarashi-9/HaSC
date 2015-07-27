@@ -35,6 +35,8 @@ library
     HaSC.Prim.ASTtoIntermed
     HaSC.MIPS.GenCode
     HaSC.MIPS.IntermedSyntax
+    HaSC.NASM.GenCode
+    HaSC.NASM.IntermedSyntax
 
   ghc-options:   -Wall
 

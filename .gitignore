@@ -16,3 +16,6 @@ cabal.sandbox.config
 *.hp
 *.s
 .stack-work/
+*.asm
+*.c
+*.sh

@@ -2,6 +2,7 @@ module HaSC.NASM.GenCode where
 
 import Control.Monad
 import Control.Monad.State
+import Data.List
 
 import HaSC.Prim.ObjInfo
 import HaSC.Prim.IntermedSyntax
@@ -11,13 +12,17 @@ type NASMCode = String
 
 nasmGenCode :: NProgram -> NASMCode
 nasmGenCode prog = concat $ intersperse "\n"
-                   (genGlobalVarDecl prog ++ map genFuncDecl prog)
+                   (genGlobalVarDecl prog ++ concatMap genFuncDecl prog)
 
 genGlobalVarDecl :: NProgram -> [NASMCode]
-genGlobalVarDecl prog = ["section .data"]
+genGlobalVarDecl prog = ["extern printf",
+                         "section .data"]
+                        ++ ["fmt: db \"%d\", 10, 0"]
                         ++ var
-                        ++ ["\n", "section .bss"]
+                        ++ ["section .bss"]
                         ++ seq
+                        ++ ["section .text",
+                            "global main"]
     where
       (var, seq) = foldr divideVarSeq ([], []) prog
 
@@ -30,63 +35,71 @@ genGlobalVarDecl prog = ["section .data"]
 
 genFuncDecl :: NDecl -> [NASMCode]
 genFuncDecl (NFunDecl nlocal name body)
-    = [name]
-      ++ map insertComma $
-         [["push", "rbp"],
-          ["mov", "rbp", "rsp"],
-          ["sub", "rsp", show nlocal]]
-         ++ genStmt body
-         ++ [["mov", "rsp", "rbp"],
-             ["pop", "rbp"],
-             ["ret"]]
+    = [name ++ ":"]
+      ++ (map insertComma $
+          [["push", ebp],
+           ["mov", ebp, esp],
+           ["sub", esp, show nlocal]]
+         ++ concatMap genStmt body
+         ++ [["mov", esp, ebp],
+             ["pop", ebp],
+             ["ret"]])
+genFuncDecl _ = [""]
 
 genStmt :: NCode -> [[NASMCode]]
 genStmt (NLabel label)      = [[label ++ ":"]]
-genStmt (NLi dest n)        = [["mov", show dest, show n]]
-genStmt (NLet dest src)     = [["mov", show dest, show src]]
--- まだ
+genStmt (NLi dest n)        = [["mov", show dest, dword n]]
+genStmt (NLet dest src)     = [["mov", eax, show src],
+                               ["mov", show dest, eax]]
 genStmt (NAop op d e1 e2)
     = case op of
-        "\\" -> [["mov", "rax", show e1],
-                 ["mov", "rdx", show 0],
-                 ["mov", "rbx", show e2],
-                 ["div", "rbx"],
-                 ["mov", show d, "rax"]]
-        _    -> [["mov", (r 8), show e1],
-                 ["mov", (r 9), show e2],
-                 [nasmArithOp op, (r 8), (r 9)],
-                 ["mov", show d, (r 8)]]
-genStmt (NRelop op d e1 e2) = [["lw", (t 1), show e1],
-                               ["lw", (t 2), show e2]]
-                              ++ mipsRelOp op
-                              ++ [["sw", (t 0), show d]]
--- ここまでまだ
-genStmt (NWrite dest src)   = [["mov", show dest, show src]]
-genStmt (NRead dest src)    = [["mov", show dest, show src]]
+        "/" -> [["mov", eax, show e1],
+                 ["mov", edx, dword 0],
+                 ["mov", ebx, show e2],
+                 ["div", ebx],
+                 ["mov", show d, eax]]
+        _    -> [["mov", eax, show e1],
+                 ["mov", ebx, show e2],
+                 [nasmArithOp op, eax, ebx],
+                 ["mov", show d, eax]]
+genStmt (NRelop op d e1 e2) = [["mov", eax, show e1],
+                               ["cmp", eax, show e2],
+                               [nasmRelOp op, "al"],
+                               ["movzx", eax, "al"],
+                               ["mov", show d, eax]]
+genStmt (NWrite dest src)   = [["mov", eax, show src],
+                               ["mov", ebx, show dest],
+                               ["mov", "[" ++ ebx ++ "]", eax]]
+genStmt (NRead dest src)    = [["mov", eax, show src],
+                               ["mov", eax, "[", eax, "]"],
+                               ["mov", show dest, eax]]
 genStmt (NAddr dest src)    = (case src of
-                                 Bp n   -> [["mov", (r 8), "rbp"],
-                                            ["add", (r 8), show n]]
-                                 Gp v _ -> [["lea", (r 8), v]])
-                              ++ [["mov", show dest, (r 8)]]
-genStmt (NJumpTr cond lab)  = [["cmp", show cond, "0"],
+                                 Bp n   -> [["mov", eax, ebp],
+                                            ["add", eax, show n]]
+                                 Gb v _ -> [["lea", eax, "[", v, "]"]])
+                              ++ [["mov", show dest, eax]]
+genStmt (NJumpTr cond lab)  = [["cmp", show cond, dword 0],
                                ["jne", lab]]
-genStmt (NJumpFls cond lab) = [["cmp", show cond, "0"],
-                               ["jeq", lab]]
+genStmt (NJumpFls cond lab) = [["cmp", show cond, dword 0],
+                               ["je", lab]]
 genStmt (NJump lab)         = [["jmp", lab]]
-genStmt (NCall dest f args) = map (\a -> ["push", show a]) args
+genStmt (NCall dest f args) = concatMap (\a -> [["mov", eax, show a],
+                                                ["push", eax]]) args
                               ++ [["call", f],
-                                  ["add", "rsp", show $ (length args) * 4],
-                                  ["mov", show dest, "rax"]]
-genStmt (NReturn ivar)      = [["mov", "rax", show ivar],
-                               ["mov", "rsp", "rbp"],
-                               ["pop", "rbp"],
+                                  ["add", esp, show $ (length args) * 4],
+                                  ["mov", show dest, eax]]
+genStmt (NReturn ivar)      = [["mov", eax, show ivar],
+                               ["mov", esp, ebp],
+                               ["pop", ebp],
                                ["ret"]]
-genStmt (NRetVoid)          = [["mov", "rsp", "rbp"],
-                               ["pop", "rbp"],
+genStmt (NRetVoid)          = [["mov", esp, ebp],
+                               ["pop", ebp],
                                ["ret"]]
-genStmt (NPrint ivar)       = [["mov", "rdi", "fmt"],
-                               ["mov", "rsi", show ivar],
-                               ["call", "printf"]]
+genStmt (NPrint ivar)       = [["mov", eax, show ivar],
+                               ["push", eax],
+                               ["push", "dword fmt"],
+                               ["call", "printf"],
+                               ["add", esp, show 8]]
 
 nasmArithOp :: String -> String
 nasmArithOp op = case op of
@@ -94,15 +107,39 @@ nasmArithOp op = case op of
                    "-" -> "sub"
                    "*" -> "imul"
 
-r :: Int -> String
-r n = "r" ++ show n
+nasmRelOp :: String -> String
+nasmRelOp op = case op of
+                 ">"  -> "setg"
+                 ">=" -> "setge"
+                 "<"  -> "setl"
+                 "<=" -> "setle"
+                 "==" -> "sete"
+                 "!=" -> "setne"
+
+insertComma :: [String] -> String
+insertComma [i]        = i
+insertComma (i0:i1:[]) = i0 ++ " " ++ i1
+insertComma (i0:i1:is) = i0 ++ " " ++ i1 ++ ", " ++ tailTerm is
+    where tailTerm []  = ""
+          tailTerm [i] = i
+          tailTerm is  = concat is
+
+dword :: (Num a, Show a) => a -> String
+dword n = "dword " ++ show n
+
+ebp = "ebp"
+esp = "esp"
+eax = "eax"
+ebx = "ebx"
+ecx = "ecx"
+edx = "edx"
 
 {- assigAddr -}
 type RBP     = Int
 type AddrEnv = State (RBP, [(IVar, NVar)])
 
 wordSize :: Int
-wordSize = -4
+wordSize = 4
 
 setGlobal :: IVar -> AddrEnv NVar
 setGlobal ivar = do let nvar = Gb (objName ivar) (objCtype ivar)
@@ -146,8 +183,8 @@ insertAddr ivar nvar = do (rbp, asc) <- get
 deleteOnlyBp :: [(IVar, NVar)] -> [(IVar, NVar)]
 deleteOnlyBp = filter f
     where f (_, nvar) = case nvar of
-                          (Bp _) -> False
-                          (Gb _) -> True
+                          (Bp _)   -> False
+                          (Gb _ _) -> True
 
 assignRelAddr :: IProgram -> NProgram
 assignRelAddr = runAddrEnv . assignIProgram
@@ -162,11 +199,11 @@ assignIDecl :: IDecl -> AddrEnv NDecl
 assignIDecl (IVarDecl ivar)        = liftM NVarDecl (setGlobal ivar)
 assignIDecl (IFunDecl f args body) = do resetRBP
                                         assignArgs (reverse args)
-                                        stmt'  <- mapM assignIStmt stmt
-                                        nlocal <- lift fst get
-                                        return $ NFunDecl -(nlocal+wordSize)
+                                        body'  <- mapM assignIStmt body
+                                        nlocal <- liftM fst get
+                                        return $ NFunDecl (-nlocal-wordSize)
                                                           (objName f)
-                                                          stmt'
+                                                          body'
 
 assignArgs :: [IVar] -> AddrEnv [NVar]
 assignArgs args = liftM fst (foldM f ([], wordSize * 2) args)
@@ -174,7 +211,7 @@ assignArgs args = liftM fst (foldM f ([], wordSize * 2) args)
                                   insertAddr ivar addr'
                                   return (addr':acc, addr+wordSize)
 
-assignIStmt :: ICode -> AddrEnv MCode
+assignIStmt :: ICode -> AddrEnv NCode
 assignIStmt (ILabel lab)           = return $ NLabel lab
 assignIStmt (ILi dest n)           = liftM2 NLi (getAddr dest) (return n)
 assignIStmt (ILet dest src)        = liftM2 NLet (getAddr dest) (getAddr src)

@@ -1,5 +1,7 @@
 module HaSC.NASM.IntermedSyntax where
 
+import HaSC.Prim.ObjInfo
+
 type NProgram = [NDecl]
 type Label = String
 
@@ -8,8 +10,12 @@ data NVar  = Bp Int
              deriving(Eq, Ord)
 
 instance Show NVar where
-    show (Bp n)    = "[ebp + " ++ show n ++ "]"
-    show (Gb l _)  = l
+    show (Bp n)    = "[ebp" ++ printN n ++ "]"
+    show (Gb l _)  = "[" ++ l ++ "]"
+
+printN :: Int -> String
+printN 0 = ""
+printN n = if n > 0 then '+':(show n) else show n
 
 data NDecl = NVarDecl NVar
            | NFunDecl Int String [NCode]
